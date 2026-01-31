@@ -1,0 +1,17 @@
+# Build artifacts
+build/
+bin/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Debug files
+*.dSYM/
+core
+
+# Config with secrets
+config.json

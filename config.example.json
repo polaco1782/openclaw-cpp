@@ -1,0 +1,22 @@
+{
+    "plugins": [
+        "telegram",
+        "claude",
+        "browser",
+        "memory"
+    ],
+    
+    "plugins_dir": "./bin/plugins",
+    
+    "workspace_dir": ".",
+    
+    "telegram": {
+        "poll_timeout": 30
+    },
+    
+    "memory": {
+        "chunk_tokens": 400,
+        "chunk_overlap": 80,
+        "max_results": 10
+    }
+}
