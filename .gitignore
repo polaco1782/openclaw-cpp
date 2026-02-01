@@ -15,3 +15,8 @@ core
 
 # Config with secrets
 config.json
+*.o
+*.so
+.openclaw/
+build/
+bin/

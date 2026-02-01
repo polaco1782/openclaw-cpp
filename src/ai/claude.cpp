@@ -1,5 +1,5 @@
 #include <openclaw/ai/claude.hpp>
-#include <openclaw/plugin/loader.hpp>
+#include <openclaw/core/loader.hpp>
 #include <cstdlib>
 #include <sstream>
 
@@ -98,17 +98,17 @@ CompletionResult ClaudeAI::chat(
     Json request = Json::object();
     
     std::string model = opts.model.empty() ? default_model_ : opts.model;
-    request.set("model", model);
+    request["model"] = model;
     
     int max_tokens = opts.max_tokens > 0 ? opts.max_tokens : 4096;
-    request.set("max_tokens", static_cast<int64_t>(max_tokens));
+    request["max_tokens"] = max_tokens;
     
     if (opts.temperature >= 0.0 && opts.temperature <= 1.0) {
-        request.set("temperature", opts.temperature);
+        request["temperature"] = opts.temperature;
     }
     
     if (!opts.system_prompt.empty()) {
-        request.set("system", opts.system_prompt);
+        request["system"] = opts.system_prompt;
     }
     
     Json msgs = Json::array();
@@ -117,20 +117,20 @@ CompletionResult ClaudeAI::chat(
         
         if (msg.role == MessageRole::SYSTEM) {
             if (opts.system_prompt.empty() && i == 0) {
-                request.set("system", msg.content);
+                request["system"] = msg.content;
             }
             continue;
         }
         
         Json m = Json::object();
-        m.set("role", role_to_string(msg.role));
-        m.set("content", msg.content);
-        msgs.push(m);
+        m["role"] = role_to_string(msg.role);
+        m["content"] = msg.content;
+        msgs.push_back(m);
     }
-    request.set("messages", msgs);
+    request["messages"] = msgs;
     
     if (opts.stream && opts.on_chunk) {
-        request.set("stream", true);
+        request["stream"] = true;
     }
     
     std::string request_body = request.dump();
@@ -155,11 +155,11 @@ CompletionResult ClaudeAI::chat(
     
     if (response.status_code != 200) {
         std::string error_msg = "API error";
-        if (resp.type() == Json::OBJECT) {
-            Json error = resp["error"];
-            if (error.type() == Json::OBJECT) {
-                std::string msg = error["message"].as_string();
-                std::string type = error["type"].as_string();
+        if (resp.is_object()) {
+            if (resp.contains("error") && resp["error"].is_object()) {
+                const Json& error = resp["error"];
+                std::string msg = error.value("message", std::string(""));
+                std::string type = error.value("type", std::string(""));
                 if (!msg.empty()) {
                     error_msg = type.empty() ? msg : (type + ": " + msg);
                 }
@@ -171,27 +171,24 @@ CompletionResult ClaudeAI::chat(
     
     CompletionResult result;
     result.success = true;
-    result.model = resp["model"].as_string();
-    result.stop_reason = resp["stop_reason"].as_string();
+    result.model = resp.value("model", std::string(""));
+    result.stop_reason = resp.value("stop_reason", std::string(""));
     
-    Json content = resp["content"];
-    if (content.type() == Json::ARRAY) {
+    if (resp.contains("content") && resp["content"].is_array()) {
         std::ostringstream text;
-        const std::vector<Json>& blocks = content.as_array();
-        for (size_t i = 0; i < blocks.size(); ++i) {
-            const Json& block = blocks[i];
-            std::string block_type = block["type"].as_string();
+        for (const auto& block : resp["content"]) {
+            std::string block_type = block.value("type", std::string(""));
             if (block_type == "text") {
-                text << block["text"].as_string();
+                text << block.value("text", std::string(""));
             }
         }
         result.content = text.str();
     }
     
-    Json usage = resp["usage"];
-    if (usage.type() == Json::OBJECT) {
-        result.usage.input_tokens = static_cast<int>(usage["input_tokens"].as_int());
-        result.usage.output_tokens = static_cast<int>(usage["output_tokens"].as_int());
+    if (resp.contains("usage") && resp["usage"].is_object()) {
+        const Json& usage = resp["usage"];
+        result.usage.input_tokens = usage.value("input_tokens", 0);
+        result.usage.output_tokens = usage.value("output_tokens", 0);
         result.usage.total_tokens = result.usage.input_tokens + result.usage.output_tokens;
     }
     

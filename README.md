@@ -11,7 +11,7 @@ A minimal, modular AI assistant framework written in C++11, inspired by [OpenCla
 - **Memory System**: SQLite-backed memory with full-text search
 - **Rate Limiting**: Token bucket and sliding window rate limiters
 - **Polls**: Create and manage interactive polls
-- **Tools**: Browser tool for web fetching, memory/task management
+- **Tools**: Built-in browser tool for web fetching, memory/task management
 - **Utilities**: Phone number normalization, path handling, string helpers
 - **Minimal Core**: Small binary with optional plugin loading
 
@@ -19,20 +19,26 @@ A minimal, modular AI assistant framework written in C++11, inspired by [OpenCla
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                   Main Loop                      │
-│    (poll channels, handle messages, dispatch)    │
+│              Main Orchestrator                   │
+│   (load plugins, route messages, main loop)      │
 └─────────────────────┬───────────────────────────┘
                       │
 ┌─────────────────────┴───────────────────────────┐
 │          Plugin Loader + Registry                │
-│      (loads .so files, manages plugins)          │
-└──────┬──────────────┬──────────────────┬────────┘
-       │              │                  │
-┌──────┴──────┐ ┌─────┴─────┐    ┌──────┴──────┐
-│  telegram   │ │  claude   │    │   memory    │
-│    .so      │ │   .so     │    │    .so      │
-└─────────────┘ └───────────┘    └─────────────┘
+│   (loads .so files, registers commands/tools)    │
+┌──────┬──────────┬──────────┬────────┘
+    │          │          │
+┌──────┴────┐ ┌───┴───┐ ┌────┴────┐
+│ claude.so │ │telegram│ │ core  │
+│   AI      │ │channel │ │ tools │
+└───────────┘ └────────┘ └───────┘
 ```
+
+**Plugin Types:**
+- **channel** - Communication channels (telegram, whatsapp)
+- **ai** - AI providers (claude) - handles chat messages
+- **tool** - Tools for commands and AI function calling (memory)
+- **core tools** - Built-in tools (browser)
 
 ## Building
 
@@ -67,12 +73,11 @@ make clean    # Clean build artifacts
 
 ```
 bin/
-├── openclaw              # Main binary
+├── openclaw              # Main binary (orchestrator)
 └── plugins/
     ├── telegram.so       # Telegram channel
     ├── whatsapp.so       # WhatsApp channel
     ├── claude.so         # Claude AI provider
-    ├── browser.so        # Web browser tool
     └── memory.so         # Memory/task tool
 ```
 
@@ -80,57 +85,90 @@ bin/
 
 ### Quick Start
 
-```bash
-# Set environment variables
-export TELEGRAM_BOT_TOKEN="your-bot-token-here"
-export ANTHROPIC_API_KEY="sk-ant-..."
+Create a `config.json` with your credentials:
 
-# Run with default plugins
-./bin/openclaw
+```json
+{
+    "plugins": ["telegram", "claude", "memory"],
+    "plugins_dir": "./bin/plugins",
+    "log_level": "info",
+    "telegram": {
+        "bot_token": "your-bot-token-here"
+    },
+    "claude": {
+        "api_key": "sk-ant-..."
+    }
+}
+```
+
+Run:
+
+```bash
+./bin/openclaw config.json
 ```
 
 ### Configuration File
 
-Create a `config.json`:
+All configuration is stored in `config.json`:
 
 ```json
 {
     "plugins": [
         "telegram",
         "claude",
-        "browser",
         "memory"
     ],
     "plugins_dir": "./bin/plugins",
     "workspace_dir": ".",
+    "log_level": "info",
+    "system_prompt": "You are a helpful assistant.",
+    
     "telegram": {
+        "bot_token": "123456:ABC...",
         "poll_timeout": 30
+    },
+    
+    "whatsapp": {
+        "phone_number_id": "...",
+        "access_token": "...",
+        "bridge_url": "http://localhost:8080"
+    },
+    
+    "claude": {
+        "api_key": "sk-ant-...",
+        "model": "claude-sonnet-4-20250514"
+    },
+    
+    "memory": {
+        "chunk_tokens": 400,
+        "chunk_overlap": 80,
+        "max_results": 10
     }
 }
 ```
 
-Run with config:
+### Configuration Options
 
-```bash
-./bin/openclaw config.json
-```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `OPENCLAW_PLUGIN_PATH` | Plugin search paths (colon-separated) |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot API token |
-| `ANTHROPIC_API_KEY` | Claude API key |
-| `OPENCLAW_LOG_LEVEL` | Log level: debug, info, warn, error |
+| Option | Description |
+|--------|-------------|
+| `plugins` | List of plugins to load |
+| `plugins_dir` | Directory to search for plugins |
+| `log_level` | Log level: debug, info, warn, error |
+| `system_prompt` | Custom system prompt for AI |
+| `telegram.bot_token` | Telegram Bot API token |
+| `claude.api_key` | Claude API key |
+| `claude.model` | Claude model to use (optional) |
 
 ## Bot Commands
 
 - `/start` - Welcome message
 - `/help` - Show available commands
+- `/skills` - List available skills
 - `/ping` - Check if bot is alive
 - `/info` - Show bot information
 - `/new` - Start new conversation
+- `/status` - Show session status
+- `/tools` - List available tools
 - `/fetch <url>` - Fetch web page content
 - `/links <url>` - Extract links from page
 
@@ -138,9 +176,11 @@ Or just send a message to chat with Claude AI!
 
 ## Plugin System
 
+Core registers built-in commands at startup. Plugins can register additional commands during initialization. The main orchestrator routes messages to registered command handlers or the AI plugin.
+
 ### Plugin Search Paths
 
-1. `OPENCLAW_PLUGIN_PATH` environment variable
+1. `plugins_dir` from config.json
 2. `./plugins`
 3. `/usr/lib/openclaw/plugins`
 4. `/usr/local/lib/openclaw/plugins`
@@ -150,8 +190,8 @@ Or just send a message to chat with Claude AI!
 1. Include the plugin header:
 
 ```cpp
-#include <openclaw/plugin/loader.hpp>
-#include <openclaw/plugin/channel.hpp>  // or tool.hpp, ai/ai.hpp
+#include <openclaw/core/loader.hpp>
+#include <openclaw/core/channel.hpp>  // or tool.hpp, ai/ai.hpp
 
 class MyPlugin : public openclaw::ChannelPlugin {
     // Implement required methods...
@@ -173,8 +213,22 @@ g++ -std=c++11 -fPIC -shared myplugin.cpp -o myplugin.so
 ### Plugin Types
 
 - `channel` - Communication channels (telegram, whatsapp)
-- `tool` - Tools for AI function calling (browser, memory)
-- `ai` - AI providers (claude)
+- `tool` - Tools for commands and AI function calling (memory)
+- `core tools` - Built-in tools compiled into the main binary (browser)
+- `ai` - AI providers (claude) - handles chat messages via `handle_message()`
+
+### Registering Commands
+
+Plugins can register commands in their `init()` method:
+
+```cpp
+bool MyPlugin::init(const Config& cfg) {
+    std::vector<CommandDef> cmds;
+    cmds.push_back(CommandDef("/mycommand", "Description", my_handler));
+    PluginRegistry::instance().register_commands(cmds);
+    return true;
+}
+```
 
 ## Project Structure
 
@@ -223,6 +277,47 @@ openclaw-cpp/
 ## License
 
 MIT License
+
+## Acknowledgments
+
+Inspired by [OpenClaw](https://github.com/openclaw/openclaw) - a TypeScript-based personal AI assistant.
+
+```bash
+cp config.example.json config.json
+# Edit config.json with your API keys and tokens
+./bin/openclaw config.json
+```
+
+The `config.example.json` file contains ALL available configuration options with comments explaining each setting.
+
+### Quick Configurations
+
+**Telegram Bot:**
+```json
+{
+    "plugins": ["telegram", "claude"],
+  "telegram": { "bot_token": "..." },
+  "claude": { "api_key": "..." }
+}
+```
+
+**WebSocket Gateway:**
+```json
+{
+  "plugins": ["gateway"],
+  "gateway": { "port": 18789, "bind": "0.0.0.0" }
+}
+```
+
+**Local Testing:**
+```json
+{
+    "plugins": ["claude"],
+  "claude": { "api_key": "..." }
+}
+```
+
+See `config.example.json` for all available options and detailed comments.
 
 ## Acknowledgments
 

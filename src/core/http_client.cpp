@@ -1,5 +1,6 @@
 #include <openclaw/core/http_client.hpp>
 #include <cstring>
+#include <sstream>
 
 namespace openclaw {
 
@@ -200,6 +201,19 @@ HttpResponse HttpClient::perform_request(const std::string& method,
     
     resp.body = response_body;
     resp.headers = response_headers;
+    
+    if (!resp.ok() && resp.error.empty()) {
+        std::ostringstream oss;
+        oss << "HTTP " << resp.status_code;
+        if (!resp.body.empty()) {
+            std::string snippet = resp.body;
+            if (snippet.size() > 512) {
+                snippet = snippet.substr(0, 512) + "...";
+            }
+            oss << ": " << snippet;
+        }
+        resp.error = oss.str();
+    }
     
     return resp;
 }

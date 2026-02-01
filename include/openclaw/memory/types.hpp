@@ -69,9 +69,51 @@ struct MemorySearchResult {
     double score;           // Relevance score (0-1)
     std::string snippet;    // Text snippet
     MemorySource source;    // Source type
+    std::string citation;   // Optional citation (path#Lstart-Lend)
     
     MemorySearchResult() : start_line(0), end_line(0), score(0), source(MemorySource::MEMORY) {}
+    
+    // Format citation string
+    std::string format_citation() const {
+        if (start_line == end_line) {
+            return path + "#L" + std::to_string(start_line);
+        }
+        return path + "#L" + std::to_string(start_line) + "-L" + std::to_string(end_line);
+    }
 };
+
+// Session transcript file entry (for session memory)
+struct SessionFileEntry {
+    std::string path;       // Relative path (sessions/xxx.jsonl)
+    std::string abs_path;   // Absolute path
+    int64_t mtime_ms;       // Modification time (unix ms)
+    int64_t size;           // File size in bytes
+    std::string hash;       // Hash of extracted content
+    std::string content;    // Extracted conversation text
+    
+    SessionFileEntry() : mtime_ms(0), size(0) {}
+};
+
+// Citation mode for memory search results
+enum class MemoryCitationMode {
+    AUTO,   // Show in DMs, hide in groups
+    ON,     // Always show citations
+    OFF     // Never show citations
+};
+
+inline std::string citation_mode_to_string(MemoryCitationMode mode) {
+    switch (mode) {
+        case MemoryCitationMode::ON: return "on";
+        case MemoryCitationMode::OFF: return "off";
+        default: return "auto";
+    }
+}
+
+inline MemoryCitationMode string_to_citation_mode(const std::string& s) {
+    if (s == "on") return MemoryCitationMode::ON;
+    if (s == "off") return MemoryCitationMode::OFF;
+    return MemoryCitationMode::AUTO;
+}
 
 // A task or reminder stored in memory
 struct MemoryTask {
@@ -107,6 +149,7 @@ struct MemorySearchConfig {
     bool hybrid_enabled;    // Use hybrid BM25 + vector search
     double bm25_weight;     // Weight for BM25 keyword search
     double vector_weight;   // Weight for vector similarity
+    MemoryCitationMode citation_mode; // How to handle citations
     
     MemorySearchConfig() 
         : max_results(10)
@@ -114,6 +157,22 @@ struct MemorySearchConfig {
         , hybrid_enabled(false)  // Vector search not implemented yet
         , bm25_weight(1.0)
         , vector_weight(0.0)
+        , citation_mode(MemoryCitationMode::AUTO)
+    {}
+};
+
+// Session sync configuration
+struct SessionSyncConfig {
+    int delta_bytes;        // Trigger sync after this many new bytes
+    int delta_messages;     // Trigger sync after this many new messages
+    bool on_session_start;  // Sync on session start
+    bool on_search;         // Sync before search if dirty
+    
+    SessionSyncConfig()
+        : delta_bytes(100000)
+        , delta_messages(50)
+        , on_session_start(true)
+        , on_search(true)
     {}
 };
 
@@ -121,12 +180,30 @@ struct MemorySearchConfig {
 struct MemoryConfig {
     std::string workspace_dir;      // Agent workspace directory
     std::string db_path;            // SQLite database path
+    std::string agent_id;           // Agent identifier
     ChunkingConfig chunking;
     MemorySearchConfig search;
+    SessionSyncConfig session_sync;
+    std::vector<std::string> sources;  // "memory", "sessions"
+    std::vector<std::string> extra_paths; // Additional memory paths
     bool watch_enabled;             // Watch files for changes
     int sync_interval_minutes;      // Auto-sync interval (0 = disabled)
+    int watch_debounce_ms;          // Debounce time for file watch
     
-    MemoryConfig() : watch_enabled(false), sync_interval_minutes(0) {}
+    MemoryConfig() 
+        : watch_enabled(false)
+        , sync_interval_minutes(0)
+        , watch_debounce_ms(1500)
+    {
+        sources.push_back("memory");
+    }
+    
+    bool has_source(const std::string& s) const {
+        for (size_t i = 0; i < sources.size(); ++i) {
+            if (sources[i] == s) return true;
+        }
+        return false;
+    }
 };
 
 } // namespace openclaw

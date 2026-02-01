@@ -36,6 +36,7 @@ public:
     ~HttpClient();
     
     void set_timeout(long ms);
+    long timeout() const { return timeout_ms_; }
     
     // GET request
     HttpResponse get(const std::string& url, 

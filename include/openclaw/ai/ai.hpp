@@ -7,7 +7,7 @@
 #ifndef OPENCLAW_AI_AI_HPP
 #define OPENCLAW_AI_AI_HPP
 
-#include "../plugin/plugin.hpp"
+#include "../core/plugin.hpp"
 #include "../core/json.hpp"
 #include <string>
 #include <vector>
@@ -121,6 +121,34 @@ public:
     
     // Check if the provider is properly configured
     virtual bool is_configured() const = 0;
+    
+    // Handle an incoming chat message (adds to session, calls AI, returns response)
+    // Returns the AI response text, or error message prefixed with error emoji
+    virtual std::string handle_message(const std::string& user_text,
+                                       std::vector<ConversationMessage>& history,
+                                       const std::string& system_prompt = "") {
+        // Default implementation - can be overridden
+        if (!is_configured()) {
+            return "🤖 AI not configured.";
+        }
+        
+        history.push_back(ConversationMessage::user(user_text));
+        
+        CompletionOptions opts;
+        opts.system_prompt = system_prompt;
+        opts.max_tokens = 4096;  // Increased from 1024 to handle longer responses
+        
+        CompletionResult result = chat(history, opts);
+        
+        if (result.success) {
+            history.push_back(ConversationMessage::assistant(result.content));
+            return result.content;
+        }
+        
+        // Remove failed user message
+        history.pop_back();
+        return "❌ AI error: " + result.error;
+    }
 };
 
 } // namespace openclaw

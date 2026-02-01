@@ -1,7 +1,7 @@
 /*
  * OpenClaw C++11 - Memory Manager Implementation
  */
-#include "../../include/openclaw/memory/manager.hpp"
+#include <openclaw/memory/manager.hpp>
 #include <fstream>
 #include <sstream>
 #include <ctime>
@@ -506,6 +506,452 @@ int64_t MemoryManager::get_current_timestamp() {
 
 void MemoryManager::set_error(const std::string& error) {
     last_error_ = error;
+}
+
+// Sync with reason and force flag
+bool MemoryManager::sync(const std::string& reason, bool force) {
+    // Log reason if needed in the future
+    (void)reason;
+    
+    bool result = sync();
+    
+    if (result && should_sync_sessions(reason, force)) {
+        result = sync_session_files();
+    }
+    
+    return result;
+}
+
+// Session support methods
+
+void MemoryManager::warm_session(const std::string& session_key) {
+    if (!initialized_) {
+        return;
+    }
+    
+    // Mark session as warmed
+    session_warm_.insert(session_key.empty() ? "_default_" : session_key);
+    
+    // Sync session files on warm
+    sync_session_files();
+}
+
+bool MemoryManager::sync_session_files() {
+    if (!initialized_) {
+        set_error("Memory manager not initialized");
+        return false;
+    }
+    
+    std::vector<std::string> session_files = list_session_files();
+    std::vector<std::string> active_paths;
+    
+    for (const auto& path : session_files) {
+        SessionFileEntry entry = build_session_entry(path);
+        active_paths.push_back(entry.path);
+        
+        // Check if file has changed
+        MemoryFile existing;
+        bool exists = store_->get_file(entry.path, MemorySource::SESSIONS, existing);
+        
+        // Compute hash of session file
+        std::string content = load_file_content(entry.abs_path);
+        std::string hash = compute_hash(content);
+        
+        if (exists && existing.hash == hash) {
+            continue;  // File unchanged
+        }
+        
+        // Index the session file
+        if (!index_session_file(entry)) {
+            // Log error but continue
+        }
+        
+        // Remove from dirty set if it was there
+        sessions_dirty_files_.erase(entry.path);
+    }
+    
+    // Remove stale session files
+    std::vector<std::string> stale = store_->get_stale_paths(active_paths, MemorySource::SESSIONS);
+    for (const auto& path : stale) {
+        store_->delete_chunks_for_file(path, MemorySource::SESSIONS);
+        store_->delete_file(path, MemorySource::SESSIONS);
+    }
+    
+    sessions_dirty_ = !sessions_dirty_files_.empty();
+    return true;
+}
+
+bool MemoryManager::should_sync_sessions(const std::string& reason, bool force) {
+    if (force) return true;
+    if (sessions_dirty_) return true;
+    if (reason == "session_end" || reason == "memory_search") return true;
+    return false;
+}
+
+std::vector<std::string> MemoryManager::list_session_files() {
+    std::vector<std::string> result;
+    
+    std::string session_dir = resolve_session_transcripts_dir();
+    
+    DIR* dir = opendir(session_dir.c_str());
+    if (!dir) {
+        return result;
+    }
+    
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string name = entry->d_name;
+        if (name == "." || name == "..") continue;
+        
+        // Only .jsonl files (session transcripts)
+        if (name.length() > 6 && name.substr(name.length() - 6) == ".jsonl") {
+            result.push_back(session_dir + "/" + name);
+        }
+    }
+    closedir(dir);
+    
+    return result;
+}
+
+SessionFileEntry MemoryManager::build_session_entry(const std::string& abs_path) {
+    SessionFileEntry entry;
+    entry.abs_path = abs_path;
+    entry.path = session_path_for_file(abs_path);
+    
+    struct stat st;
+    if (stat(abs_path.c_str(), &st) == 0) {
+        entry.mtime_ms = static_cast<int64_t>(st.st_mtime) * 1000;
+        entry.size = st.st_size;
+    }
+    
+    return entry;
+}
+
+std::string MemoryManager::resolve_session_transcripts_dir() {
+    // Default session directory is .openclaw/sessions
+    return config_.workspace_dir + "/.openclaw/sessions";
+}
+
+std::string MemoryManager::session_path_for_file(const std::string& abs_path) {
+    // Convert absolute path to workspace-relative path
+    if (abs_path.find(config_.workspace_dir) == 0) {
+        return abs_path.substr(config_.workspace_dir.length() + 1);
+    }
+    return abs_path;
+}
+
+bool MemoryManager::index_session_file(const SessionFileEntry& entry) {
+    // Read file content
+    std::string content = load_file_content(entry.abs_path);
+    std::string hash = compute_hash(content);
+    
+    // Delete existing chunks
+    store_->delete_chunks_for_file(entry.path, MemorySource::SESSIONS);
+    
+    // Extract text from session transcript
+    std::string text = extract_session_text(content);
+    text = normalize_session_text(text);
+    
+    if (!text.empty()) {
+        // Create chunks from the extracted text
+        std::vector<MemoryChunk> chunks = chunk_content(text, entry.path, MemorySource::SESSIONS);
+        
+        for (const auto& chunk : chunks) {
+            if (!store_->upsert_chunk(chunk)) {
+                // Log error but continue
+            }
+        }
+    }
+    
+    // Update file record
+    MemoryFile mf;
+    mf.path = entry.path;
+    mf.abs_path = entry.abs_path;
+    mf.source = MemorySource::SESSIONS;
+    mf.hash = hash;
+    mf.mtime = entry.mtime_ms;
+    mf.size = entry.size;
+    
+    return store_->upsert_file(mf);
+}
+
+std::string MemoryManager::extract_session_text(const std::string& content) {
+    // Parse JSONL session transcript and extract user/assistant messages
+    std::string result;
+    std::istringstream stream(content);
+    std::string line;
+    
+    while (std::getline(stream, line)) {
+        if (line.empty()) continue;
+        
+        // Simple JSON parsing - look for role and content fields
+        // Format: {"role":"user","content":"..."}
+        std::string role;
+        std::string msg_content;
+        
+        // Find role
+        size_t role_pos = line.find("\"role\"");
+        if (role_pos != std::string::npos) {
+            size_t colon = line.find(':', role_pos);
+            if (colon != std::string::npos) {
+                size_t quote1 = line.find('"', colon);
+                if (quote1 != std::string::npos) {
+                    size_t quote2 = line.find('"', quote1 + 1);
+                    if (quote2 != std::string::npos) {
+                        role = line.substr(quote1 + 1, quote2 - quote1 - 1);
+                    }
+                }
+            }
+        }
+        
+        // Find content
+        size_t content_pos = line.find("\"content\"");
+        if (content_pos != std::string::npos) {
+            size_t colon = line.find(':', content_pos);
+            if (colon != std::string::npos) {
+                size_t quote1 = line.find('"', colon);
+                if (quote1 != std::string::npos) {
+                    // Handle escaped quotes in content
+                    size_t pos = quote1 + 1;
+                    while (pos < line.length()) {
+                        if (line[pos] == '"' && (pos == 0 || line[pos-1] != '\\')) {
+                            break;
+                        }
+                        pos++;
+                    }
+                    msg_content = line.substr(quote1 + 1, pos - quote1 - 1);
+                    // Unescape basic sequences
+                    msg_content = unescape_json_string(msg_content);
+                }
+            }
+        }
+        
+        // Only include user and assistant messages
+        if ((role == "user" || role == "assistant") && !msg_content.empty()) {
+            if (!result.empty()) {
+                result += "\n\n";
+            }
+            result += "[" + role + "]: " + msg_content;
+        }
+    }
+    
+    return result;
+}
+
+std::string MemoryManager::normalize_session_text(const std::string& text) {
+    // Normalize whitespace and remove excessive blank lines
+    std::string result;
+    result.reserve(text.length());
+    
+    bool prev_newline = false;
+    bool prev_blank = false;
+    
+    for (size_t i = 0; i < text.length(); ++i) {
+        char c = text[i];
+        
+        if (c == '\n') {
+            if (prev_blank) {
+                continue;  // Skip extra blank lines
+            }
+            if (prev_newline) {
+                prev_blank = true;
+            }
+            prev_newline = true;
+            result += c;
+        } else if (c == '\r') {
+            continue;  // Skip CR
+        } else {
+            prev_newline = false;
+            prev_blank = false;
+            result += c;
+        }
+    }
+    
+    return result;
+}
+
+std::string MemoryManager::unescape_json_string(const std::string& s) {
+    std::string result;
+    result.reserve(s.length());
+    
+    for (size_t i = 0; i < s.length(); ++i) {
+        if (s[i] == '\\' && i + 1 < s.length()) {
+            char next = s[i + 1];
+            switch (next) {
+                case 'n':  result += '\n'; ++i; break;
+                case 't':  result += '\t'; ++i; break;
+                case 'r':  result += '\r'; ++i; break;
+                case '"':  result += '"';  ++i; break;
+                case '\\': result += '\\'; ++i; break;
+                default:   result += s[i]; break;
+            }
+        } else {
+            result += s[i];
+        }
+    }
+    
+    return result;
+}
+
+std::string MemoryManager::load_file_content(const std::string& abs_path) {
+    std::ifstream f(abs_path.c_str());
+    if (!f) {
+        return "";
+    }
+    std::stringstream buffer;
+    buffer << f.rdbuf();
+    return buffer.str();
+}
+
+bool MemoryManager::is_memory_path(const std::string& rel_path) {
+    // Check if path is a memory file (MEMORY.md or memory/*.md)
+    if (rel_path == "MEMORY.md" || rel_path == "memory.md") {
+        return true;
+    }
+    if (rel_path.find("memory/") == 0 && rel_path.length() > 10 &&
+        rel_path.substr(rel_path.length() - 3) == ".md") {
+        return true;
+    }
+    return false;
+}
+
+bool MemoryManager::is_allowed_path(const std::string& abs_path) {
+    // Check if path is within workspace
+    return abs_path.find(config_.workspace_dir) == 0;
+}
+
+MemoryManager::MemoryStatus MemoryManager::status() const {
+    MemoryStatus s;
+    s.backend = "builtin";
+    s.provider = "bm25";
+    s.dirty = dirty_;
+    s.sessions_dirty = sessions_dirty_;
+    s.workspace_dir = config_.workspace_dir;
+    s.db_path = config_.db_path;
+    if (s.db_path.empty()) {
+        s.db_path = config_.workspace_dir + "/.openclaw/memory.db";
+    }
+    
+    if (initialized_ && store_) {
+        s.files = static_cast<int>(store_->list_files(MemorySource::MEMORY).size());
+        s.chunks = 0;  // Would need store method to count
+        
+        // Add source names
+        s.sources.push_back("memory");
+        if (!session_warm_.empty()) {
+            s.sources.push_back("session");
+        }
+    } else {
+        s.files = 0;
+        s.chunks = 0;
+    }
+    
+    return s;
+}
+
+// Search with session key
+std::vector<MemorySearchResult> MemoryManager::search(const std::string& query,
+                                                       const MemorySearchConfig& config,
+                                                       const std::string& session_key) {
+    std::vector<MemorySearchResult> results = search(query, config);
+    
+    // Optionally decorate with citations based on session context
+    bool include_citations = should_include_citations(MemoryCitationMode::AUTO, session_key);
+    decorate_citations(results, include_citations);
+    
+    return results;
+}
+
+MemoryManager::ReadFileResult MemoryManager::read_file(const std::string& rel_path, 
+                                                        int from_line, 
+                                                        int num_lines) {
+    ReadFileResult result;
+    result.path = rel_path;
+    result.success = false;
+    
+    // Resolve path (relative to workspace)
+    std::string abs_path = rel_path;
+    if (rel_path[0] != '/') {
+        abs_path = config_.workspace_dir + "/" + rel_path;
+    }
+    
+    // Check if allowed
+    if (!is_allowed_path(abs_path)) {
+        result.error = "Path not allowed: " + rel_path;
+        return result;
+    }
+    
+    std::ifstream f(abs_path.c_str());
+    if (!f) {
+        result.error = "File not found: " + rel_path;
+        return result;
+    }
+    
+    // Read file lines
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(f, line)) {
+        lines.push_back(line);
+    }
+    
+    int total_lines = static_cast<int>(lines.size());
+    
+    // Adjust line range (from_line is 0-indexed)
+    int start = (from_line > 0) ? from_line : 0;
+    int end = (num_lines > 0) ? (start + num_lines) : total_lines;
+    
+    if (start >= total_lines) {
+        result.error = "Start line out of range";
+        return result;
+    }
+    
+    if (end > total_lines) {
+        end = total_lines;
+    }
+    
+    // Extract requested lines
+    std::stringstream ss;
+    for (int i = start; i < end; ++i) {
+        if (i > start) ss << "\n";
+        ss << lines[i];
+    }
+    
+    result.text = ss.str();
+    result.success = true;
+    
+    return result;
+}
+
+bool MemoryManager::should_include_citations(MemoryCitationMode mode, const std::string& session_key) {
+    if (mode == MemoryCitationMode::OFF) return false;
+    if (mode == MemoryCitationMode::ON) return true;
+    
+    // AUTO mode: include citations for certain chat types
+    std::string chat_type = derive_chat_type_from_session_key(session_key);
+    return (chat_type == "vscode" || chat_type == "coding");
+}
+
+void MemoryManager::decorate_citations(std::vector<MemorySearchResult>& results, bool include) {
+    for (auto& r : results) {
+        if (include && r.start_line > 0) {
+            std::stringstream ss;
+            ss << r.path << "#L" << r.start_line;
+            if (r.end_line > r.start_line) {
+                ss << "-L" << r.end_line;
+            }
+            r.citation = ss.str();
+        }
+    }
+}
+
+std::string MemoryManager::derive_chat_type_from_session_key(const std::string& session_key) {
+    // Derive chat type from session key pattern
+    // e.g., "vscode_12345" -> "vscode", "telegram_abc" -> "telegram"
+    size_t underscore = session_key.find('_');
+    if (underscore != std::string::npos) {
+        return session_key.substr(0, underscore);
+    }
+    return session_key;
 }
 
 } // namespace openclaw

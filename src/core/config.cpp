@@ -28,81 +28,89 @@ bool Config::load_string(const std::string& json_str) {
 }
 
 std::string Config::get_string(const std::string& key, const std::string& def) const {
-    if (data_.has(key)) {
-        return data_[key].as_string(def);
+    // Support dot notation for nested keys (e.g., "gateway.bind")
+    size_t dot_pos = key.find('.');
+    if (dot_pos != std::string::npos) {
+        std::string section = key.substr(0, dot_pos);
+        std::string subkey = key.substr(dot_pos + 1);
+        
+        if (data_.contains(section)) {
+            const Json& sec = data_[section];
+            // Handle multi-level nesting (e.g., "gateway.auth.token")
+            size_t dot_pos2 = subkey.find('.');
+            if (dot_pos2 != std::string::npos) {
+                std::string subsection = subkey.substr(0, dot_pos2);
+                std::string finalkey = subkey.substr(dot_pos2 + 1);
+                if (sec.contains(subsection)) {
+                    const Json& subsec = sec[subsection];
+                    if (subsec.contains(finalkey) && subsec[finalkey].is_string()) {
+                        return subsec[finalkey].get<std::string>();
+                    }
+                }
+            } else if (sec.contains(subkey) && sec[subkey].is_string()) {
+                return sec[subkey].get<std::string>();
+            }
+        }
+        return def;
     }
-    std::string env_key = to_env_key(key);
-    const char* env_val = std::getenv(env_key.c_str());
-    return env_val ? env_val : def;
+    
+    // No dot notation, direct lookup
+    if (data_.contains(key) && data_[key].is_string()) {
+        return data_[key].get<std::string>();
+    }
+    return def;
 }
 
 int64_t Config::get_int(const std::string& key, int64_t def) const {
-    if (data_.has(key)) {
-        return data_[key].as_int(def);
+    // Support dot notation for nested keys
+    size_t dot_pos = key.find('.');
+    if (dot_pos != std::string::npos) {
+        std::string section = key.substr(0, dot_pos);
+        std::string subkey = key.substr(dot_pos + 1);
+        
+        if (data_.contains(section)) {
+            const Json& sec = data_[section];
+            if (sec.contains(subkey) && sec[subkey].is_number()) {
+                return sec[subkey].get<int64_t>();
+            }
+        }
+        return def;
     }
-    std::string env_key = to_env_key(key);
-    const char* env_val = std::getenv(env_key.c_str());
-    if (env_val) {
-        return std::strtoll(env_val, NULL, 10);
+    
+    // No dot notation, direct lookup
+    if (data_.contains(key) && data_[key].is_number()) {
+        return data_[key].get<int64_t>();
     }
     return def;
 }
 
 bool Config::get_bool(const std::string& key, bool def) const {
-    if (data_.has(key)) {
-        return data_[key].as_bool(def);
-    }
-    std::string env_key = to_env_key(key);
-    const char* env_val = std::getenv(env_key.c_str());
-    if (env_val) {
-        std::string val(env_val);
-        return val == "1" || val == "true" || val == "yes";
+    if (data_.contains(key) && data_[key].is_boolean()) {
+        return data_[key].get<bool>();
     }
     return def;
 }
 
 const Json& Config::get_section(const std::string& key) const {
-    return data_[key];
+    static Json null_json;
+    if (data_.contains(key)) {
+        return data_[key];
+    }
+    return null_json;
 }
 
 std::string Config::get_channel_string(const std::string& channel, 
                                         const std::string& key,
                                         const std::string& def) const {
-    if (data_.has("channels")) {
-        const Json& channels = data_["channels"];
-        if (channels.has(channel)) {
-            const Json& ch = channels[channel];
-            if (ch.has(key)) {
-                return ch[key].as_string(def);
-            }
+    if (data_.contains(channel)) {
+        const Json& ch = data_[channel];
+        if (ch.contains(key) && ch[key].is_string()) {
+            return ch[key].get<std::string>();
         }
     }
-    std::string env_key = "OPENCLAW_" + to_upper(channel) + "_" + to_upper(key);
-    const char* env_val = std::getenv(env_key.c_str());
-    return env_val ? env_val : def;
+    return def;
 }
 
 const Json& Config::data() const { return data_; }
-
-std::string Config::to_upper(const std::string& s) {
-    std::string result;
-    for (size_t i = 0; i < s.size(); ++i) {
-        char c = s[i];
-        if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-        result += c;
-    }
-    return result;
-}
-
-std::string Config::to_env_key(const std::string& key) {
-    std::string result = "OPENCLAW_";
-    for (size_t i = 0; i < key.size(); ++i) {
-        char c = key[i];
-        if (c == '.') c = '_';
-        if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
-        result += c;
-    }
-    return result;
-}
 
 } // namespace openclaw

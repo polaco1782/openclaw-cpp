@@ -82,6 +82,23 @@ const char* channel_status_str(ChannelStatus s);
 using MessageCallback = std::function<void(const Message&)>;
 using ErrorCallback = std::function<void(const std::string& channel, const std::string& error)>;
 
+// Forward declarations
+class Session;
+
+// Command handler function type
+typedef std::string (*CommandHandlerFunc)(const Message& msg, Session& session, const std::string& args);
+
+// Command definition for plugin registration
+struct CommandDef {
+    std::string command;      // Command name (e.g., "/ping")
+    std::string description;  // Help text
+    CommandHandlerFunc handler;
+    
+    CommandDef() : handler(NULL) {}
+    CommandDef(const std::string& cmd, const std::string& desc, CommandHandlerFunc h)
+        : command(cmd), description(desc), handler(h) {}
+};
+
 } // namespace openclaw
 
 #endif // OPENCLAW_CORE_TYPES_HPP

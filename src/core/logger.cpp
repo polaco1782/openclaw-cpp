@@ -2,6 +2,10 @@
 
 namespace openclaw {
 
+// Force visibility for the singleton across shared library boundaries
+#ifdef __GNUC__
+__attribute__((visibility("default")))
+#endif
 Logger& Logger::instance() {
     static Logger logger;
     return logger;

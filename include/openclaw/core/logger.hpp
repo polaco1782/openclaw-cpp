@@ -8,6 +8,13 @@
 
 namespace openclaw {
 
+// Visibility attribute for plugin-visible symbols
+#ifdef __GNUC__
+#  define LOGGER_API __attribute__((visibility("default")))
+#else
+#  define LOGGER_API
+#endif
+
 enum class LogLevel {
     DEBUG = 0,
     INFO = 1,
@@ -15,7 +22,7 @@ enum class LogLevel {
     ERROR = 3
 };
 
-class Logger {
+class LOGGER_API Logger {
 public:
     static Logger& instance();
     

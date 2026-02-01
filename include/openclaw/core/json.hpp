@@ -1,97 +1,120 @@
 #ifndef OPENCLAW_CORE_JSON_HPP
 #define OPENCLAW_CORE_JSON_HPP
 
-// Minimal JSON implementation for C++11
-// Supports: objects, arrays, strings, numbers, booleans, null
+/*
+ * OpenClaw JSON wrapper using nlohmann/json
+ * 
+ * This provides a thin wrapper around nlohmann/json that maintains
+ * API compatibility with the codebase while leveraging the robust,
+ * UTF-8 compliant nlohmann library.
+ */
 
+#include "deps/nlohmann_json.hpp"
 #include <string>
 #include <vector>
 #include <map>
-#include <sstream>
-#include <stdexcept>
-#include <cstdlib>
-#include <cctype>
 
 namespace openclaw {
 
-class Json {
-public:
-    enum Type { NUL, BOOL, NUMBER, STRING, ARRAY, OBJECT };
-    
-    // Constructors
-    Json() : type_(NUL), bool_(false), number_(0) {}
-    Json(bool b) : type_(BOOL), bool_(b), number_(0) {}
-    Json(int n) : type_(NUMBER), bool_(false), number_(n) {}
-    Json(int64_t n) : type_(NUMBER), bool_(false), number_(static_cast<double>(n)) {}
-    Json(double n) : type_(NUMBER), bool_(false), number_(n) {}
-    Json(const char* s) : type_(STRING), bool_(false), number_(0), string_(s) {}
-    Json(const std::string& s) : type_(STRING), bool_(false), number_(0), string_(s) {}
-    Json(std::vector<Json> arr) : type_(ARRAY), bool_(false), number_(0), array_(arr) {}
-    Json(std::map<std::string, Json> obj) : type_(OBJECT), bool_(false), number_(0), object_(obj) {}
-    
-    // Type checks
-    Type type() const;
-    bool is_null() const;
-    bool is_bool() const;
-    bool is_number() const;
-    bool is_string() const;
-    bool is_array() const;
-    bool is_object() const;
-    
-    // Value accessors
-    bool as_bool(bool def = false) const;
-    double as_number(double def = 0) const;
-    int64_t as_int(int64_t def = 0) const;
-    std::string as_string(const std::string& def = "") const;
-    const std::vector<Json>& as_array() const;
-    const std::map<std::string, Json>& as_object() const;
-    
-    // Object access
-    const Json& operator[](const std::string& key) const;
-    const Json& operator[](size_t idx) const;
-    bool has(const std::string& key) const;
-    size_t size() const;
-    
-    // Modifiers
-    void set(const std::string& key, const Json& value);
-    void push(const Json& value);
-    void set_type(Type t);
-    
-    // Helper getters with defaults
-    std::string get_string(const std::string& key, const std::string& def = "") const;
-    int get_int(const std::string& key, int def = 0) const;
-    double get_double(const std::string& key, double def = 0.0) const;
-    bool get_bool(const std::string& key, bool def = false) const;
-    
-    // Static constructors
-    static Json object();
-    static Json array();
-    
-    // Serialization
-    std::string dump() const;
-    
-    // Parsing
-    static Json parse(const std::string& str);
+// Type alias for nlohmann::json
+using Json = nlohmann::json;
 
-private:
-    Type type_;
-    bool bool_;
-    double number_;
-    std::string string_;
-    std::vector<Json> array_;
-    std::map<std::string, Json> object_;
-    
-    void dump_impl(std::ostringstream& ss) const;
-    static void escape_string(std::ostringstream& ss, const std::string& s);
-    static void skip_ws(const std::string& s, size_t& pos);
-    static Json parse_value(const std::string& s, size_t& pos);
-    static Json parse_null(const std::string& s, size_t& pos);
-    static Json parse_bool(const std::string& s, size_t& pos);
-    static Json parse_number(const std::string& s, size_t& pos);
-    static Json parse_string(const std::string& s, size_t& pos);
-    static Json parse_array(const std::string& s, size_t& pos);
-    static Json parse_object(const std::string& s, size_t& pos);
-};
+// Convenience functions for common operations (backwards compatibility)
+namespace json_utils {
+
+// Check if JSON object has a key
+inline bool has(const Json& j, const std::string& key) {
+    return j.is_object() && j.contains(key);
+}
+
+// Safe string extraction with default
+inline std::string get_string(const Json& j, const std::string& key, const std::string& def = "") {
+    if (j.is_object() && j.contains(key)) {
+        const auto& val = j[key];
+        if (val.is_string()) {
+            return val.get<std::string>();
+        }
+    }
+    return def;
+}
+
+// Safe int extraction with default
+inline int64_t get_int(const Json& j, const std::string& key, int64_t def = 0) {
+    if (j.is_object() && j.contains(key)) {
+        const auto& val = j[key];
+        if (val.is_number_integer()) {
+            return val.get<int64_t>();
+        } else if (val.is_number()) {
+            return static_cast<int64_t>(val.get<double>());
+        }
+    }
+    return def;
+}
+
+// Safe double extraction with default
+inline double get_double(const Json& j, const std::string& key, double def = 0.0) {
+    if (j.is_object() && j.contains(key)) {
+        const auto& val = j[key];
+        if (val.is_number()) {
+            return val.get<double>();
+        }
+    }
+    return def;
+}
+
+// Safe bool extraction with default
+inline bool get_bool(const Json& j, const std::string& key, bool def = false) {
+    if (j.is_object() && j.contains(key)) {
+        const auto& val = j[key];
+        if (val.is_boolean()) {
+            return val.get<bool>();
+        }
+    }
+    return def;
+}
+
+// Safe value extraction with defaults (for any type)
+inline std::string as_string(const Json& j, const std::string& def = "") {
+    if (j.is_string()) {
+        return j.get<std::string>();
+    }
+    return def;
+}
+
+inline int64_t as_int(const Json& j, int64_t def = 0) {
+    if (j.is_number_integer()) {
+        return j.get<int64_t>();
+    } else if (j.is_number()) {
+        return static_cast<int64_t>(j.get<double>());
+    }
+    return def;
+}
+
+inline double as_number(const Json& j, double def = 0.0) {
+    if (j.is_number()) {
+        return j.get<double>();
+    }
+    return def;
+}
+
+inline bool as_bool(const Json& j, bool def = false) {
+    if (j.is_boolean()) {
+        return j.get<bool>();
+    }
+    return def;
+}
+
+// Create empty object
+inline Json object() {
+    return Json::object();
+}
+
+// Create empty array
+inline Json array() {
+    return Json::array();
+}
+
+} // namespace json_utils
 
 } // namespace openclaw
 

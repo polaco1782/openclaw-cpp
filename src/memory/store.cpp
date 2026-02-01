@@ -1,7 +1,7 @@
 /*
  * OpenClaw C++11 - Memory SQLite Store Implementation
  */
-#include "../../include/openclaw/memory/store.hpp"
+#include <openclaw/memory/store.hpp>
 #include <cstring>
 #include <sstream>
 

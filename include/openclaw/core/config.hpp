@@ -4,7 +4,6 @@
 #include "json.hpp"
 #include <string>
 #include <fstream>
-#include <cstdlib>
 
 namespace openclaw {
 
@@ -18,7 +17,7 @@ public:
     // Load from JSON string
     bool load_string(const std::string& json_str);
     
-    // Get string value with fallback to environment variable
+    // Get string value
     std::string get_string(const std::string& key, const std::string& def = "") const;
     
     int64_t get_int(const std::string& key, int64_t def = 0) const;
@@ -38,9 +37,6 @@ public:
 
 private:
     Json data_;
-    
-    static std::string to_upper(const std::string& s);
-    static std::string to_env_key(const std::string& key);
 };
 
 } // namespace openclaw

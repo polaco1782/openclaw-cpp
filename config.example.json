@@ -1,22 +1,93 @@
 {
-    "plugins": [
-        "telegram",
-        "claude",
-        "browser",
-        "memory"
-    ],
-    
-    "plugins_dir": "./bin/plugins",
-    
-    "workspace_dir": ".",
-    
-    "telegram": {
-        "poll_timeout": 30
-    },
-    
-    "memory": {
-        "chunk_tokens": 400,
-        "chunk_overlap": 80,
-        "max_results": 10
+  "plugins": [
+    "telegram",
+    "claude",
+    "gateway"
+  ],
+  
+  "plugins_dir": "./bin/plugins",
+  "log_level": "debug",
+  "workspace_dir": ".",
+
+  "skills": {
+    "bundled_dir": "",
+    "managed_dir": ""
+  },
+
+  "_section_channels": "========== CHANNEL PLUGINS ==========",
+  
+  "telegram": {
+    "_note": "Get bot token from @BotFather on Telegram",
+    "bot_token": "BOT_TOKEN_HERE",
+    "poll_timeout": 30
+  },
+  
+  "whatsapp": {
+    "_note": "WhatsApp Business API - leave empty to disable",
+    "phone_number_id": "",
+    "access_token": "",
+    "bridge_url": ""
+  },
+  
+  "_section_ai": "========== AI PROVIDERS ==========",
+  
+  "claude": {
+    "_note": "Get API key from console.anthropic.com",
+    "api_key": "YOUR_ANTHROPIC_API_KEY_HERE",
+    "model": "claude-sonnet-4-20250514",
+    "_alternatives": "claude-opus-4, claude-haiku-4",
+    "max_tokens": 4096,
+    "temperature": 1.0
+  },
+  
+  "_section_gateway": "========== GATEWAY SERVER ==========",
+  
+  "gateway": {
+    "_note": "WebSocket gateway for API/programmatic access",
+    "port": 18789,
+    "bind": "0.0.0.0",
+    "_bind_note": "Use 127.0.0.1 for local only, 0.0.0.0 for all interfaces",
+    "auth": {
+      "token": "your-secure-token-here",
+      "_note": "Leave empty to disable authentication"
     }
+  },
+  
+  "_section_tools": "========== TOOL PLUGINS ==========",
+  
+  "browser": {
+    "_note": "HTTP client for web browsing",
+    "user_agent": "OpenClaw/0.5.0",
+    "timeout": 30,
+    "max_redirects": 5
+  },
+  
+  "memory": {
+    "_note": "Vector memory and task management",
+    "chunk_tokens": 400,
+    "chunk_overlap": 80,
+    "max_results": 10,
+    "db_path": ".openclaw/memory.db"
+  },
+  
+  "_section_global": "========== GLOBAL SETTINGS ==========",
+  
+  "session": {
+    "_note": "Conversation session settings",
+    "max_history": 20,
+    "timeout": 3600
+  },
+  
+  "rate_limit": {
+    "_note": "Rate limiting per user",
+    "max_tokens": 10,
+    "refill_rate": 2
+  },
+  
+  "system_prompt": "You are OpenClaw, a helpful AI assistant. Be friendly, concise, and helpful. You have access to tools for browsing the web and managing memory/tasks.",
+  
+  "_quick_configs": "========== QUICK START ==========",
+  "_telegram_bot": "Telegram Bot: plugins=['telegram','claude']",
+  "_gateway_only": "Gateway Only: plugins=['gateway']",
+  "_local_test": "Local Test: plugins=['claude']"
 }
