@@ -149,18 +149,6 @@ private:
     std::map<std::string, CommandDef> commands_;
 };
 
-// Helper macro for static plugin registration
-#define REGISTER_PLUGIN(PluginClass) \
-    namespace { \
-        static PluginClass plugin_instance_##PluginClass; \
-        struct PluginRegistrar_##PluginClass { \
-            PluginRegistrar_##PluginClass() { \
-                openclaw::PluginRegistry::instance().register_plugin(&plugin_instance_##PluginClass); \
-            } \
-        }; \
-        static PluginRegistrar_##PluginClass registrar_##PluginClass; \
-    }
-
 } // namespace openclaw
 
 #endif // OPENCLAW_PLUGIN_REGISTRY_HPP

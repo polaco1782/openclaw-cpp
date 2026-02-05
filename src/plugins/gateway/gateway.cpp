@@ -642,24 +642,6 @@ void GatewayPlugin::on_incoming_message(const Message& msg) {
 
 } // namespace openclaw
 
-// ============================================================================
-// Plugin Factory
-// ============================================================================
-
-extern "C" {
-    __attribute__((visibility("default")))
-    openclaw::Plugin* openclaw_create_plugin() {
-        return new openclaw::GatewayPlugin();
-    }
-    
-    // Plugin info for dynamic loading
-    __attribute__((visibility("default")))
-    openclaw::PluginInfo openclaw_get_plugin_info() {
-        openclaw::PluginInfo info;
-        info.name = "gateway";
-        info.version = "1.0.0";
-        info.description = "WebSocket gateway server (Crow backend)";
-        info.type = "service";
-        return info;
-    }
-}
+// Export plugin for dynamic loading
+OPENCLAW_DECLARE_PLUGIN(openclaw::GatewayPlugin, "gateway", "1.0.0", 
+                        "WebSocket gateway server (Crow backend)", "service")

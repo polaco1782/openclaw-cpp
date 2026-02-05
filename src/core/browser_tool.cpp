@@ -562,6 +562,3 @@ std::vector<std::pair<std::string, std::string> > BrowserTool::extract_links(
 }
 
 } // namespace openclaw
-
-using BrowserToolPlugin = openclaw::BrowserTool;
-REGISTER_PLUGIN(BrowserToolPlugin)

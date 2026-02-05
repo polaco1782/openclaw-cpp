@@ -4,6 +4,7 @@
 #include <openclaw/core/commands.hpp>
 #include <openclaw/core/logger.hpp>
 #include <openclaw/core/utils.hpp>
+#include <openclaw/core/application.hpp>
 #include <sstream>
 
 namespace openclaw {
@@ -65,6 +66,7 @@ std::string cmd_help(const Message& /*msg*/, Session& /*session*/, const std::st
 }
 
 std::string cmd_info(const Message& msg, Session& /*session*/, const std::string& /*args*/) {
+    Application& app = Application::instance();
     PluginRegistry& registry = PluginRegistry::instance();
     SessionManager& sessions = SessionManager::instance();
 
@@ -80,18 +82,21 @@ std::string cmd_info(const Message& msg, Session& /*session*/, const std::string
         channels_list << channels[i]->channel_id();
     }
 
-    // Build tools list
+    // Build tools list from agent (includes all registered tools)
     std::ostringstream tools_list;
-    const std::vector<ToolProvider*>& tools = registry.tools();
-    for (size_t i = 0; i < tools.size(); ++i) {
-        if (i > 0) tools_list << ", ";
-        tools_list << tools[i]->tool_id();
+    const std::map<std::string, AgentTool>& tools = app.agent().tools();
+    size_t count = 0;
+    for (std::map<std::string, AgentTool>::const_iterator it = tools.begin();
+         it != tools.end(); ++it) {
+        if (count > 0) tools_list << ", ";
+        tools_list << it->first;
+        ++count;
     }
 
     std::ostringstream oss;
     oss << core_app_name << " v" << core_app_version << "\n"
         << "Channels: " << (channels_list.str().empty() ? "none" : channels_list.str()) << "\n"
-        << "Tools: " << (tools_list.str().empty() ? "none" : tools_list.str()) << "\n"
+        << "Tools: " << tools.size() << " (" << (tools_list.str().empty() ? "none" : tools_list.str()) << ")\n"
         << "AI: " << ai_info << "\n"
         << "Your channel: " << msg.channel << "\n"
         << "Plugins loaded: " << registry.plugins().size() << "\n"
@@ -123,8 +128,8 @@ std::string cmd_status(const Message& /*msg*/, Session& session, const std::stri
 }
 
 std::string cmd_tools(const Message& /*msg*/, Session& /*session*/, const std::string& /*args*/) {
-    PluginRegistry& registry = PluginRegistry::instance();
-    const std::vector<ToolProvider*>& tools = registry.tools();
+    Application& app = Application::instance();
+    const std::map<std::string, AgentTool>& tools = app.agent().tools();
 
     if (tools.empty()) {
         return "No tools available.";
@@ -133,13 +138,20 @@ std::string cmd_tools(const Message& /*msg*/, Session& /*session*/, const std::s
     std::ostringstream oss;
     oss << "🔧 Available Tools\n\n";
 
-    for (size_t i = 0; i < tools.size(); ++i) {
-        oss << "• " << tools[i]->tool_id() << " - " << tools[i]->description() << "\n";
-        std::vector<std::string> actions = tools[i]->actions();
-        oss << "  Actions: ";
-        for (size_t j = 0; j < actions.size(); ++j) {
-            if (j > 0) oss << ", ";
-            oss << actions[j];
+    for (std::map<std::string, AgentTool>::const_iterator it = tools.begin();
+         it != tools.end(); ++it) {
+        const AgentTool& tool = it->second;
+        oss << "**" << tool.name << "**\n";
+        oss << "  " << tool.description << "\n";
+        
+        if (!tool.params.empty()) {
+            oss << "  Parameters:\n";
+            for (size_t i = 0; i < tool.params.size(); ++i) {
+                const ToolParamSchema& param = tool.params[i];
+                oss << "    • `" << param.name << "` (" << param.type;
+                if (param.required) oss << ", required";
+                oss << "): " << param.description << "\n";
+            }
         }
         oss << "\n";
     }

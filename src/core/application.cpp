@@ -7,6 +7,8 @@
 #include <openclaw/core/logger.hpp>
 #include <openclaw/core/commands.hpp>
 #include <openclaw/core/builtin_tools.hpp>
+#include <openclaw/core/browser_tool.hpp>
+#include <openclaw/core/memory_tool.hpp>
 #include <openclaw/core/message_handler.hpp>
 #include <openclaw/core/utils.hpp>
 
@@ -218,20 +220,10 @@ void Application::setup_skills() {
 void Application::setup_agent() {
     LOG_INFO("Initializing agent tools...");
     
-    auto workspace_dir = config_.get_string("workspace_dir", ".");
-    auto bash_timeout = static_cast<int>(config_.get_int("agent.bash_timeout", 20));
+    // Built-in tools are now registered via BuiltinToolsProvider
+    // which will be initialized along with other plugins in setup_plugins()
     
-    // Register built-in tools
-    agent_.register_tool(builtin_tools::create_read_tool(workspace_dir));
-    agent_.register_tool(builtin_tools::create_bash_tool(workspace_dir, bash_timeout));
-    agent_.register_tool(builtin_tools::create_list_dir_tool(workspace_dir));
-    agent_.register_tool(builtin_tools::create_write_tool(workspace_dir));
-    
-    // Content chunking tools
-    agent_.register_tool(builtin_tools::create_content_chunk_tool(agent_.chunker()));
-    agent_.register_tool(builtin_tools::create_content_search_tool(agent_.chunker()));
-    
-    LOG_INFO("Registered %zu agent tools", agent_.tools().size());
+    LOG_INFO("Agent ready (tools will be registered from providers)");
 }
 
 void Application::setup_plugins() {
@@ -244,15 +236,25 @@ void Application::setup_plugins() {
         loader_.add_search_path(plugins_dir);
     }
     
-    // Load plugins from config
+    // Load external plugins from config
     int loaded = loader_.load_from_config(config_);
-    LOG_INFO("Loaded %d plugins", loaded);
+    LOG_INFO("Loaded %d external plugins", loaded);
     
-    // Register plugins with registry
+    // Register internal/core tool providers (built into the binary)
+    static BuiltinToolsProvider builtin_tools_provider;
+    static BrowserTool browser_tool;
+    static MemoryTool memory_tool;
+    
+    registry().register_plugin(&builtin_tools_provider);
+    registry().register_plugin(&browser_tool);
+    registry().register_plugin(&memory_tool);
+    LOG_DEBUG("Registered 3 core tool providers (builtin, browser, memory)");
+    
+    // Register external plugins with registry
     for (const auto& plugin : loader_.plugins()) {
         if (plugin.instance) {
             registry().register_plugin(plugin.instance);
-            LOG_DEBUG("Registered plugin: %s (%s)", 
+            LOG_DEBUG("Registered external plugin: %s (%s)", 
                       plugin.info.name, plugin.info.type);
         }
     }
@@ -271,6 +273,9 @@ void Application::setup_plugins() {
     
     LOG_INFO("Registered %zu commands", registry().commands().size());
 
+    // Set up chunker reference for builtin tools
+    builtin_tools_provider.set_chunker(&agent_.chunker());
+
     // Register tool plugins with the agent
     for (auto* tool_plugin : registry().tools()) {
         if (!tool_plugin || !tool_plugin->is_initialized()) {
@@ -280,13 +285,11 @@ void Application::setup_plugins() {
         auto agent_tools = tool_plugin->get_agent_tools();
         for (const auto& tool : agent_tools) {
             agent_.register_tool(tool);
-            LOG_DEBUG("Registered tool: %s", tool.name.c_str());
+            LOG_DEBUG("Registered agent tool: %s", tool.name.c_str());
         }
     }
 
-    if (!registry().tools().empty()) {
-        LOG_INFO("Registered %zu plugin tool(s) with agent", registry().tools().size());
-    }
+    LOG_INFO("Registered %zu total agent tools", agent_.tools().size());
 }
 
 void Application::setup_channels() {

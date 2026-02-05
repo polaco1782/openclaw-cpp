@@ -667,6 +667,3 @@ Json MemoryTool::make_success(const std::string& message) {
 }
 
 } // namespace openclaw
-
-using MemoryToolPlugin = openclaw::MemoryTool;
-REGISTER_PLUGIN(MemoryToolPlugin)
