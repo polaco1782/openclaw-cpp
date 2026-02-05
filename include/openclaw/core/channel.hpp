@@ -30,6 +30,12 @@ public:
         return send_message(to, text);
     }
     
+    // Typing indicator (optional - override if channel supports it)
+    virtual SendResult send_typing_action(const std::string& to) {
+        (void)to;
+        return SendResult::fail("Typing action not supported by this channel");
+    }
+    
     // Poll for new messages (call regularly in event loop)
     virtual void poll() = 0;
     

@@ -23,6 +23,7 @@ ChannelCapabilities WhatsAppChannel::capabilities() const {
     caps.supports_media = true;
     caps.supports_edit = false;
     caps.supports_delete = true;
+    caps.supports_typing = true;
     return caps;
 }
 
@@ -111,6 +112,32 @@ SendResult WhatsAppChannel::send_message(const std::string& to, const std::strin
         return send_cloud_api(to, text, reply_to);
     } else if (mode_ == MODE_BRIDGE) {
         return send_bridge(to, text, reply_to);
+    }
+    return SendResult::fail("WhatsApp not configured");
+}
+
+SendResult WhatsAppChannel::send_typing_action(const std::string& to) {
+    if (mode_ == MODE_CLOUD_API) {
+        // WhatsApp Cloud API doesn't have a typing indicator endpoint
+        // It's a limitation of the official API
+        LOG_DEBUG("WhatsApp Cloud API: typing indicator not supported");
+        return SendResult::fail("Typing action not supported in Cloud API mode");
+    } else if (mode_ == MODE_BRIDGE) {
+        // Bridge mode might support typing via custom endpoint
+        std::string phone = normalize_phone(to);
+        
+        Json params = Json::object();
+        params["phone"] = phone;
+        params["action"] = "typing";
+        
+        HttpResponse resp = http_.post_json(api_base_ + "/typing", params);
+        if (!resp.ok()) {
+            LOG_DEBUG("WhatsApp Bridge: typing action failed - %s", resp.error.c_str());
+            return SendResult::fail("HTTP error: " + resp.error);
+        }
+        
+        LOG_DEBUG("WhatsApp: sent typing action to %s", to.c_str());
+        return SendResult::ok("");
     }
     return SendResult::fail("WhatsApp not configured");
 }

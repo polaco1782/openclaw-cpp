@@ -57,6 +57,7 @@ struct ChannelCapabilities {
     bool supports_edit;
     bool supports_delete;
     bool supports_threads;
+    bool supports_typing;
     
     ChannelCapabilities() 
         : supports_groups(false)
@@ -64,7 +65,8 @@ struct ChannelCapabilities {
         , supports_media(false)
         , supports_edit(false)
         , supports_delete(false)
-        , supports_threads(false) {}
+        , supports_threads(false)
+        , supports_typing(false) {}
 };
 
 // Channel status

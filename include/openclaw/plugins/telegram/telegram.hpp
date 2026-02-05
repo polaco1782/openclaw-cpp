@@ -38,6 +38,9 @@ public:
     SendResult send_message(const std::string& to, const std::string& text,
                             const std::string& reply_to);
     
+    // Send typing action
+    SendResult send_typing_action(const std::string& to);
+    
     // Poll for updates (call this regularly)
     void poll();
 

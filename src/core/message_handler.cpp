@@ -167,7 +167,7 @@ bool handle_skill_command(
     }
     
     // AI-mediated dispatch via agentic loop
-    LOG_DEBUG("AI-mediated skill dispatch via agentic loop: %s", spec->skill_name.c_str());
+    LOG_DEBUG("[Skills] AI-mediated skill dispatch via agentic loop: %s", spec->skill_name.c_str());
     
     // Find the skill entry
     const auto* entry = app.skills().find_skill_by_name(spec->skill_name, app.skill_entries());
@@ -186,8 +186,8 @@ bool handle_skill_command(
     rewritten += "Then follow those instructions to complete this task: ";
     rewritten += skill_args;
     
-    LOG_DEBUG("Rewritten prompt: %s", rewritten.c_str());
-    LOG_DEBUG("System prompt size: %zu chars", app.system_prompt().size());
+    LOG_DEBUG("[Skills] Rewritten prompt: %s", rewritten.c_str());
+    LOG_DEBUG("[Skills] System prompt size: %zu chars", app.system_prompt().size());
     
     // Route to AI
     auto* ai = app.registry().get_default_ai();
@@ -199,6 +199,10 @@ bool handle_skill_command(
         LOG_WARN("Cannot execute skill - AI not configured");
         return true;
     }
+    
+    // Start AI monitoring session
+    std::string monitor_session_id = msg.channel + ":" + msg.to;
+    app.ai_monitor().start_session(monitor_session_id, msg.channel, msg.to);
     
     app.typing().start_typing(msg.to);
     
@@ -229,6 +233,7 @@ bool handle_skill_command(
     }
     
     app.typing().stop_typing(msg.to);
+    app.ai_monitor().end_session(monitor_session_id);
     return true;
 }
 
@@ -244,6 +249,10 @@ std::string handle_ai_message(
                "Type /help for available commands.";
     }
     
+    // Start AI monitoring session
+    std::string monitor_session_id = msg.channel + ":" + msg.to;
+    app.ai_monitor().start_session(monitor_session_id, msg.channel, msg.to);
+    
     // Start typing indicator
     app.typing().start_typing(msg.to);
     
@@ -254,10 +263,13 @@ std::string handle_ai_message(
     LOG_DEBUG("[AI] System prompt length: %zu chars", app.system_prompt().size());
     LOG_DEBUG("[AI] Registered tools: %zu", app.agent().tools().size());
     
-    // Run agentic loop
+    // Run agentic loop with heartbeat callbacks
     AgentConfig agent_config;
     agent_config.max_iterations = 15;
     agent_config.max_consecutive_errors = 3;
+    
+    // Add heartbeat callback to agent config (if AgentConfig supports it)
+    // For now, we'll send heartbeats periodically from a wrapper
     
     auto agent_result = app.agent().run(
         ai, 
@@ -290,8 +302,9 @@ std::string handle_ai_message(
         response = "❌ Agent error: " + agent_result.error;
     }
     
-    // Stop typing
+    // Stop typing and end monitoring session
     app.typing().stop_typing(msg.to);
+    app.ai_monitor().end_session(monitor_session_id);
     
     return response;
 }
@@ -352,7 +365,7 @@ void send_response(
 void process_message(const Message& msg) {
     auto& app = Application::instance();
     
-    LOG_DEBUG("Processing message from %s: %s", msg.from_name.c_str(), msg.text.c_str());
+    LOG_DEBUG("[AI] Processing message from %s: %s", msg.from_name.c_str(), msg.text.c_str());
     
     auto* channel = app.registry().get_channel(msg.channel);
     if (!channel || msg.text.empty()) {

@@ -30,6 +30,7 @@ void register_core_commands(const Config& cfg, PluginRegistry& registry) {
     cmds.push_back(CommandDef("/new", "Clear conversation", commands::cmd_new));
     cmds.push_back(CommandDef("/status", "Show session status", commands::cmd_status));
     cmds.push_back(CommandDef("/tools", "List available tools", commands::cmd_tools));
+    cmds.push_back(CommandDef("/monitor", "AI monitor status", commands::cmd_monitor));
 
     registry.register_commands(cmds);
     LOG_INFO("Core commands registered: %zu", cmds.size());
@@ -156,6 +157,23 @@ std::string cmd_tools(const Message& /*msg*/, Session& /*session*/, const std::s
         oss << "\n";
     }
 
+    return oss.str();
+}
+
+std::string cmd_monitor(const Message& /*msg*/, Session& /*session*/, const std::string& /*args*/) {
+    Application& app = Application::instance();
+    AIProcessMonitor::Stats stats = app.ai_monitor().get_stats();
+    
+    std::ostringstream oss;
+    oss << "🔍 AI Process Monitor\n\n"
+        << "Active sessions: " << stats.active_sessions << "\n"
+        << "Total sessions: " << stats.total_sessions_started << "\n"
+        << "Hung detected: " << stats.total_hung_detected << "\n"
+        << "Typing indicators sent: " << stats.total_typing_indicators_sent << "\n\n"
+        << "Config:\n"
+        << "  Hang timeout: " << app.ai_monitor().get_config().hang_timeout_seconds << "s\n"
+        << "  Typing interval: " << app.ai_monitor().get_config().typing_interval_seconds << "s";
+    
     return oss.str();
 }
 

@@ -189,12 +189,9 @@ void Application::setup_skills() {
     skill_entries_ = std::move(eligible);
     skill_command_specs_ = skill_manager_.build_workspace_skill_command_specs(&entries, nullptr, nullptr);
     
-    LOG_DEBUG("Built %zu skill command specs:", skill_command_specs_.size());
+    LOG_DEBUG("[Skills] Built %zu skill command specs", skill_command_specs_.size());
     for (const auto& spec : skill_command_specs_) {
-        LOG_DEBUG("  /%s -> skill '%s' (%s)", 
-                  spec.name.c_str(),
-                  spec.skill_name.c_str(),
-                  spec.description.c_str());
+        LOG_DEBUG("[Skills]   /%s -> skill '%s' (%s)", spec.name.c_str(), spec.skill_name.c_str(), spec.description.c_str());
     }
     
     // Append skills section to system prompt
@@ -374,6 +371,23 @@ bool Application::init(int argc, char* argv[]) {
     setup_plugins();
     setup_channels();
     
+    // Start AI process monitor
+    AIProcessMonitor::Config monitor_config;
+    monitor_config.hang_timeout_seconds = config_.get_int("ai_monitor.hang_timeout", 30);
+    monitor_config.typing_interval_seconds = config_.get_int("ai_monitor.typing_interval", 3);
+    monitor_config.check_interval_ms = config_.get_int("ai_monitor.check_interval_ms", 1000);
+    ai_monitor_.set_config(monitor_config);
+    
+    // Set hung session callback
+    ai_monitor_.set_hung_callback([](const std::string& session_id, int elapsed_seconds) {
+        LOG_ERROR("AI HUNG DETECTED: session [%s] no heartbeat for %d seconds",
+                  session_id.c_str(), elapsed_seconds);
+        // Future: could implement recovery actions here
+    });
+    
+    ai_monitor_.start();
+    LOG_INFO("AI process monitor started");
+    
     // Verify we have something to run
     auto* gateway = registry().get_plugin("gateway");
     bool has_gateway = (gateway != nullptr && gateway->is_initialized());
@@ -430,6 +444,9 @@ int Application::run() {
 
 void Application::shutdown() {
     LOG_INFO("Shutting down...");
+    
+    // Stop AI monitor first
+    ai_monitor_.stop();
     
     // Stop thread pool (wait for pending)
     thread_pool_.shutdown();

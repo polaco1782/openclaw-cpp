@@ -36,6 +36,7 @@ CORE_SOURCES = $(SRC_DIR)/core/types.cpp \
                $(SRC_DIR)/core/application.cpp \
                $(SRC_DIR)/core/message_handler.cpp \
                $(SRC_DIR)/core/builtin_tools.cpp \
+               $(SRC_DIR)/core/ai_monitor.cpp \
                $(SRC_DIR)/ai/ai.cpp \
                $(SRC_DIR)/memory/store.cpp \
                $(SRC_DIR)/memory/manager.cpp \
@@ -61,6 +62,7 @@ CORE_OBJECTS = $(BUILD_DIR)/types.o \
                $(BUILD_DIR)/application.o \
                $(BUILD_DIR)/message_handler.o \
                $(BUILD_DIR)/builtin_tools.o \
+               $(BUILD_DIR)/ai_monitor.o \
                $(BUILD_DIR)/ai.o \
                $(BUILD_DIR)/memory_store.o \
                $(BUILD_DIR)/memory_manager.o \
@@ -138,6 +140,9 @@ $(BUILD_DIR)/application.o: $(SRC_DIR)/core/application.cpp
 	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
 
 $(BUILD_DIR)/message_handler.o: $(SRC_DIR)/core/message_handler.cpp
+	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
+
+$(BUILD_DIR)/ai_monitor.o: $(SRC_DIR)/core/ai_monitor.cpp
 	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
 
 $(BUILD_DIR)/builtin_tools.o: $(SRC_DIR)/core/builtin_tools.cpp

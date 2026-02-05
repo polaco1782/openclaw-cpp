@@ -38,6 +38,7 @@ ChannelCapabilities TelegramChannel::capabilities() const {
     caps.supports_media = true;
     caps.supports_edit = true;
     caps.supports_delete = true;
+    caps.supports_typing = true;
     return caps;
 }
 
@@ -133,6 +134,35 @@ SendResult TelegramChannel::send_message(const std::string& to, const std::strin
         reply_id = std::strtoll(reply_to.c_str(), NULL, 10);
     }
     return send_message_impl(to, text, reply_id);
+}
+
+SendResult TelegramChannel::send_typing_action(const std::string& to) {
+    Json params = Json::object();
+    params["chat_id"] = to;
+    params["action"] = "typing";
+    
+    LOG_DEBUG("Telegram: sending typing action to chat_id=%s", to.c_str());
+    
+    // Use a quick timeout for typing actions (they're fire-and-forget)
+    http_send_.set_timeout(3000);
+    HttpResponse resp = http_send_.post_json(api_base_ + "/sendChatAction", params);
+    
+    if (!resp.ok()) {
+        LOG_WARN("Telegram: typing action HTTP failed - %s", resp.error.c_str());
+        return SendResult::fail("HTTP error: " + resp.error);
+    }
+    
+    Json result = resp.json();
+    bool api_ok = result.value("ok", false);
+    
+    if (!api_ok) {
+        std::string desc = result.value("description", std::string("unknown"));
+        LOG_WARN("Telegram: typing action API error - %s (chat_id=%s)", desc.c_str(), to.c_str());
+        return SendResult::fail("API error: " + desc);
+    }
+    
+    LOG_INFO("Telegram: ✓ typing action sent successfully to %s", to.c_str());
+    return SendResult::ok("");
 }
 
 void TelegramChannel::poll() {

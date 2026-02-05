@@ -120,7 +120,7 @@ private:
             crow::response res;
             res.set_header("Content-Type", "text/html; charset=utf-8");
             res.body = std::string(CONTROL_UI_HTML);
-            LOG_DEBUG("Served control UI to HTTP client");
+            LOG_DEBUG("[Gateway] Served control UI to HTTP client");
             return res;
         });
         
@@ -160,7 +160,7 @@ private:
         }
         
         plugin_->handle_client_connect(client);
-        LOG_DEBUG("Gateway WebSocket client connected: %s", conn_id.c_str());
+        LOG_DEBUG("[Gateway] WebSocket client connected: %s", conn_id.c_str());
     }
     
     void on_ws_close(crow::websocket::connection& conn, const std::string& reason) {
@@ -176,7 +176,7 @@ private:
         }
         
         if (client) {
-            LOG_DEBUG("Gateway WebSocket client disconnected: %s (reason: %s)", 
+            LOG_DEBUG("[Gateway] WebSocket client disconnected: %s (reason: %s)", 
                      client->conn_id().c_str(), reason.c_str());
             plugin_->handle_client_disconnect(client);
             delete client;
@@ -580,7 +580,7 @@ Json GatewayPlugin::handle_chat_send(GatewayClient* /* client */, const Json& pa
     if (send_result.success) {
         result["success"] = true;
         result["message_id"] = send_result.message_id;
-        LOG_DEBUG("Message sent successfully: %s", send_result.message_id.c_str());
+        LOG_DEBUG("[Gateway] Message sent successfully: %s", send_result.message_id.c_str());
     } else {
         result["success"] = false;
         result["error"] = send_result.error;
@@ -629,7 +629,7 @@ void GatewayPlugin::route_incoming_message(const Message& msg) {
         event_payload["media_url"] = msg.media_url;
     }
     
-    LOG_DEBUG("Gateway routing incoming message from %s: %s", 
+    LOG_DEBUG("[Gateway] routing incoming message from %s: %s", 
               msg.from_name.c_str(), msg.text.c_str());
     
     broadcast("chat.message", event_payload);

@@ -14,6 +14,7 @@
 #include "thread_pool.hpp"
 #include "rate_limiter.hpp"
 #include "agent.hpp"
+#include "ai_monitor.hpp"
 #include "../skills/manager.hpp"
 #include "../skills/types.hpp"
 
@@ -64,6 +65,9 @@ public:
     
     Agent& agent() { return agent_; }
     
+    // AI process monitor
+    AIProcessMonitor& ai_monitor() { return ai_monitor_; }
+    
     // Rate limiting
     KeyedRateLimiter& user_limiter() { return user_limiter_; }
     MessageDebouncer& debouncer() { return debouncer_; }
@@ -109,6 +113,7 @@ private:
     PluginLoader loader_;
     ThreadPool thread_pool_;
     Agent agent_;
+    AIProcessMonitor ai_monitor_;
     
     // Rate limiting
     KeyedRateLimiter user_limiter_;

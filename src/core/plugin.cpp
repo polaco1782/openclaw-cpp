@@ -27,11 +27,11 @@ void PluginRegistry::register_command(const CommandDef& cmd) {
 }
 
 void PluginRegistry::register_commands(const std::vector<CommandDef>& cmds) {
-    LOG_DEBUG("PluginRegistry: registering %zu commands", cmds.size());
+    LOG_DEBUG("[Registry] registering %zu commands", cmds.size());
     for (size_t i = 0; i < cmds.size(); ++i) {
         register_command(cmds[i]);
     }
-    LOG_DEBUG("PluginRegistry: total commands now: %zu", commands_.size());
+    LOG_DEBUG("[Registry] total commands now: %zu", commands_.size());
 }
 
 std::string PluginRegistry::execute_command(const std::string& command, const Message& msg, 
