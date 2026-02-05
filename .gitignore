@@ -11,7 +11,6 @@ bin/
 
 # Debug files
 *.dSYM/
-core
 
 # Config with secrets
 config.json

@@ -25,14 +25,17 @@ CORE_SOURCES = $(SRC_DIR)/core/types.cpp \
                $(SRC_DIR)/core/logger.cpp \
                $(SRC_DIR)/core/config.cpp \
                $(SRC_DIR)/core/http_client.cpp \
-			   $(SRC_DIR)/core/commands.cpp \
-			   $(SRC_DIR)/core/browser_tool.cpp \
-			   $(SRC_DIR)/core/tool.cpp \
+               $(SRC_DIR)/core/commands.cpp \
+               $(SRC_DIR)/core/browser_tool.cpp \
+               $(SRC_DIR)/core/tool.cpp \
                $(SRC_DIR)/core/utils.cpp \
                $(SRC_DIR)/core/session.cpp \
                $(SRC_DIR)/core/rate_limiter.cpp \
                $(SRC_DIR)/core/loader.cpp \
                $(SRC_DIR)/core/memory_tool.cpp \
+               $(SRC_DIR)/core/application.cpp \
+               $(SRC_DIR)/core/message_handler.cpp \
+               $(SRC_DIR)/core/builtin_tools.cpp \
                $(SRC_DIR)/ai/ai.cpp \
                $(SRC_DIR)/memory/store.cpp \
                $(SRC_DIR)/memory/manager.cpp \
@@ -44,9 +47,9 @@ CORE_OBJECTS = $(BUILD_DIR)/types.o \
                $(BUILD_DIR)/logger.o \
                $(BUILD_DIR)/config.o \
                $(BUILD_DIR)/http_client.o \
-			   $(BUILD_DIR)/commands.o \
-			   $(BUILD_DIR)/browser_tool.o \
-			   $(BUILD_DIR)/tool.o \
+               $(BUILD_DIR)/commands.o \
+               $(BUILD_DIR)/browser_tool.o \
+               $(BUILD_DIR)/tool.o \
                $(BUILD_DIR)/utils.o \
                $(BUILD_DIR)/session.o \
                $(BUILD_DIR)/rate_limiter.o \
@@ -55,6 +58,9 @@ CORE_OBJECTS = $(BUILD_DIR)/types.o \
                $(BUILD_DIR)/thread_pool.o \
                $(BUILD_DIR)/memory_tool.o \
                $(BUILD_DIR)/agent.o \
+               $(BUILD_DIR)/application.o \
+               $(BUILD_DIR)/message_handler.o \
+               $(BUILD_DIR)/builtin_tools.o \
                $(BUILD_DIR)/ai.o \
                $(BUILD_DIR)/memory_store.o \
                $(BUILD_DIR)/memory_manager.o \
@@ -126,6 +132,15 @@ $(BUILD_DIR)/ai.o: $(SRC_DIR)/ai/ai.cpp
 	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
 
 $(BUILD_DIR)/agent.o: $(SRC_DIR)/core/agent.cpp
+	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
+
+$(BUILD_DIR)/application.o: $(SRC_DIR)/core/application.cpp
+	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
+
+$(BUILD_DIR)/message_handler.o: $(SRC_DIR)/core/message_handler.cpp
+	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
+
+$(BUILD_DIR)/builtin_tools.o: $(SRC_DIR)/core/builtin_tools.cpp
 	$(CXX) $(CXXFLAGS_PIC) -c $< -o $@
 
 $(BUILD_DIR)/memory_tool.o: $(SRC_DIR)/core/memory_tool.cpp
