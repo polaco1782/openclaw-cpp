@@ -35,7 +35,12 @@ public:
     virtual void poll();  // Poll WebSocket server
     
     // Receive all incoming messages for routing to gateway clients
-    virtual void on_incoming_message(const Message& msg);
+    virtual void on_incoming_message(const Message& msg) override;
+    
+    // Receive typing indicator events
+    virtual void on_typing_indicator(const std::string& channel_id,
+                                     const std::string& chat_id,
+                                     bool typing) override;
     
     // Gateway operations
     bool start(int port = 18789);
@@ -48,6 +53,11 @@ public:
     
     // Broadcast events to all connected clients
     void broadcast(const std::string& event, const Json& payload);
+    
+    // Send typing indicator event
+    void send_typing_event(const std::string& channel_id, 
+                          const std::string& chat_id, 
+                          bool typing);
     
     // Message routing - called by channel plugins to broadcast messages to gateway
     void route_incoming_message(const Message& msg);

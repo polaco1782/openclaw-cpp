@@ -298,6 +298,48 @@
         .log-entry.warn { color: #ffa502; }
         .log-entry.info { color: var(--text-primary); }
         
+        .typing-indicator {
+            align-self: flex-start;
+            background: var(--msg-received);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            border-bottom-left-radius: 4px;
+            padding: 10px 14px;
+            max-width: 70px;
+            display: none;
+        }
+        
+        .typing-indicator.active {
+            display: block;
+        }
+        
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-secondary);
+            animation: typing 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.7; }
+            30% { transform: translateY(-10px); opacity: 1; }
+        }
+        
         #logs {
             max-height: 150px;
             overflow-y: auto;
@@ -363,6 +405,14 @@
                 </div>
             </div>
             
+            <div class="typing-indicator" id="typingIndicator">
+                <div class="typing-dots">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                </div>
+            </div>
+            
             <div class="chat-input-container">
                 <div class="chat-controls">
                     <div class="input-group">
@@ -401,8 +451,7 @@
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
         const channelSelect = document.getElementById('channelSelect');
-        const recipientInput = document.getElementById('recipientInput');
-        
+        const recipientInput = document.getElementById('recipientInput');        const typingIndicator = document.getElementById('typingIndicator');        
         function log(message, level = 'info') {
             const entry = document.createElement('div');
             entry.className = `log-entry ${level}`;
@@ -550,9 +599,56 @@
                 const chatMsg = msg.payload;
                 log(`Message from ${chatMsg.from_name} on ${chatMsg.channel}`, 'info');
                 addMessage(chatMsg, 'received');
+            } else if (msg.event === 'chat.typing') {
+                // Typing indicator
+                const typingData = msg.payload;
+                if (typingData.typing) {
+                    showTyping(typingData.channel, typingData.chat_id);
+                } else {
+                    hideTyping();
+                }
             } else {
                 log(`Event: ${msg.event}`, 'info');
             }
+        }
+        
+        let typingTimeout = null;
+        function showTyping(channel, chatId) {
+            typingIndicator.classList.add('active');
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Auto-hide after 5 seconds if no update
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                hideTyping();
+            }, 5000);
+        }
+        
+        function hideTyping() {
+            typingIndicator.classList.remove('active');
+            clearTimeout(typingTimeout);
+        }
+        
+        let typingTimeout = null;
+        function showTyping(channel, chatId) {
+            const emptyState = messagesDiv.querySelector('.empty-state');
+            if (emptyState) emptyState.style.display = 'none';
+            
+            typingIndicator.classList.add('active');
+            setTimeout(() => {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight + 100;
+            }, 10);
+            
+            // Auto-hide after 5 seconds if no update
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                hideTyping();
+            }, 5000);
+        }
+        
+        function hideTyping() {
+            typingIndicator.classList.remove('active');
+            clearTimeout(typingTimeout);
         }
         
         let callId = 1;

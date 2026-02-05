@@ -31,6 +31,12 @@ public:
     // (useful for gateway/logging plugins that need to see all traffic)
     virtual void on_incoming_message(const Message& /* msg */) {}
     
+    // Optional: plugins can override this to receive typing indicator events
+    // (useful for gateway plugins that want to show typing status)
+    virtual void on_typing_indicator(const std::string& /* channel_id */,
+                                     const std::string& /* chat_id */,
+                                     bool /* typing */) {}
+    
 protected:
     bool initialized_;
     

@@ -367,6 +367,20 @@ void GatewayPlugin::broadcast(const std::string& event, const Json& payload) {
     }
 }
 
+void GatewayPlugin::send_typing_event(const std::string& channel_id, 
+                                      const std::string& chat_id, 
+                                      bool typing) {
+    Json payload = Json::object();
+    payload["channel"] = channel_id;
+    payload["chat_id"] = chat_id;
+    payload["typing"] = typing;
+    
+    broadcast("chat.typing", payload);
+    
+    LOG_DEBUG("[Gateway] Sent typing=%s event for %s:%s to %zu clients", 
+              typing ? "true" : "false", channel_id.c_str(), chat_id.c_str(), clients_.size());
+}
+
 // ============================================================================
 // Protocol Handlers
 // ============================================================================
@@ -560,11 +574,15 @@ Json GatewayPlugin::handle_chat_send(GatewayClient* /* client */, const Json& pa
     LOG_INFO("Gateway chat.send: channel=%s, to=%s, text=%s", 
              channel_id.c_str(), to.c_str(), text.c_str());
     
+    // Send initial typing indicator to gateway clients
+    send_typing_event(channel_id, to, true);
+    
     // Get the channel plugin from registry
     ChannelPlugin* channel = PluginRegistry::instance().get_channel(channel_id);
     if (!channel) {
         result["error"] = "Channel not found: " + channel_id;
         LOG_ERROR("Channel not found: %s", channel_id.c_str());
+        send_typing_event(channel_id, to, false);  // Stop typing on error
         return result;
     }
     
@@ -581,6 +599,7 @@ Json GatewayPlugin::handle_chat_send(GatewayClient* /* client */, const Json& pa
         result["success"] = true;
         result["message_id"] = send_result.message_id;
         LOG_DEBUG("[Gateway] Message sent successfully: %s", send_result.message_id.c_str());
+        // Note: typing indicator will be stopped by AI monitor when session ends
     } else {
         result["success"] = false;
         result["error"] = send_result.error;
@@ -638,6 +657,13 @@ void GatewayPlugin::route_incoming_message(const Message& msg) {
 void GatewayPlugin::on_incoming_message(const Message& msg) {
     // This is called by the main application for all incoming messages
     route_incoming_message(msg);
+}
+
+void GatewayPlugin::on_typing_indicator(const std::string& channel_id,
+                                        const std::string& chat_id,
+                                        bool typing) {
+    // Forward typing events to WebSocket clients
+    send_typing_event(channel_id, chat_id, typing);
 }
 
 } // namespace openclaw

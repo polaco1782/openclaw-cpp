@@ -104,6 +104,14 @@ void AIProcessMonitor::end_session(const std::string& session_id) {
                   it->second.heartbeat_count,
                   it->second.is_hung ? "yes" : "no");
         
+        // Stop typing indicator
+        auto& state = it->second;
+        auto& app = Application::instance();
+        auto& plugins = app.registry().plugins();
+        for (size_t i = 0; i < plugins.size(); ++i) {
+            plugins[i]->on_typing_indicator(state.channel_id, state.chat_id, false);
+        }
+        
         active_sessions_.erase(it);
     }
 }
@@ -223,6 +231,12 @@ void AIProcessMonitor::send_typing_indicator(const std::string& channel_id,
     } else {
         LOG_WARN("[AIProcessMonitor] ✗ failed to send typing indicator to %s:%s - %s",
                   channel_id.c_str(), chat_id.c_str(), send_result.error.c_str());
+    }
+    
+    // Notify all plugins about typing indicator
+    auto& plugins = app.registry().plugins();
+    for (size_t i = 0; i < plugins.size(); ++i) {
+        plugins[i]->on_typing_indicator(channel_id, chat_id, true);
     }
 }
 
