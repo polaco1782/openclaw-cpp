@@ -4,11 +4,29 @@
 #include <openclaw/core/loader.hpp>
 #include <openclaw/core/logger.hpp>
 #include <dlfcn.h>
+#include <openclaw/core/dl_utils.hpp>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cstring>
 
 namespace openclaw {
+
+namespace {
+    void teardown_loaded_plugin(LoadedPlugin& plugin) {
+        if (plugin.instance) {
+            plugin.instance->shutdown();
+            if (plugin.destroy_func) {
+                plugin.destroy_func(plugin.instance);
+            }
+            plugin.instance = nullptr;
+        }
+
+        if (plugin.handle) {
+            dlclose(plugin.handle);
+            plugin.handle = nullptr;
+        }
+    }
+}
 
 PluginLoader::PluginLoader() {
     // Default search paths
@@ -71,18 +89,17 @@ bool PluginLoader::load_impl(const std::string& path, LoadedPlugin& plugin) {
     plugin.handle = handle;
     plugin.path = path;
     
-    // Get plugin info function
-    GetPluginInfoFunc get_info = (GetPluginInfoFunc)dlsym(handle, "openclaw_get_plugin_info");
+    // Lookup required symbols (use templated helper to avoid repetitive casts)
+    GetPluginInfoFunc get_info = get_symbol<GetPluginInfoFunc>(handle, "openclaw_get_plugin_info");
     if (!get_info) {
         set_error("Plugin missing openclaw_get_plugin_info: " + path);
         dlclose(handle);
         return false;
     }
-    
-    // Get create/destroy functions
-    plugin.create_func = (CreatePluginFunc)dlsym(handle, "openclaw_create_plugin");
-    plugin.destroy_func = (DestroyPluginFunc)dlsym(handle, "openclaw_destroy_plugin");
-    
+
+    plugin.create_func = get_symbol<CreatePluginFunc>(handle, "openclaw_create_plugin");
+    plugin.destroy_func = get_symbol<DestroyPluginFunc>(handle, "openclaw_destroy_plugin");
+
     if (!plugin.create_func) {
         set_error("Plugin missing openclaw_create_plugin: " + path);
         dlclose(handle);
@@ -182,21 +199,7 @@ void PluginLoader::unload(const std::string& name) {
     
     size_t idx = it->second;
     LoadedPlugin& plugin = plugins_[idx];
-    
-    // Shutdown and destroy plugin instance
-    if (plugin.instance) {
-        plugin.instance->shutdown();
-        if (plugin.destroy_func) {
-            plugin.destroy_func(plugin.instance);
-        }
-        plugin.instance = nullptr;
-    }
-    
-    // Close shared library
-    if (plugin.handle) {
-        dlclose(plugin.handle);
-        plugin.handle = nullptr;
-    }
+    teardown_loaded_plugin(plugin);
     
     LOG_INFO("Unloaded plugin: %s", name.c_str());
     
@@ -208,19 +211,7 @@ void PluginLoader::unload_all() {
     // Unload in reverse order
     for (size_t i = plugins_.size(); i > 0; --i) {
         LoadedPlugin& plugin = plugins_[i - 1];
-        
-        if (plugin.instance) {
-            plugin.instance->shutdown();
-            if (plugin.destroy_func) {
-                plugin.destroy_func(plugin.instance);
-            }
-            plugin.instance = nullptr;
-        }
-        
-        if (plugin.handle) {
-            dlclose(plugin.handle);
-            plugin.handle = nullptr;
-        }
+        teardown_loaded_plugin(plugin);
     }
     
     plugins_.clear();
@@ -257,17 +248,18 @@ void PluginLoader::add_search_path(const std::string& path) {
 
 std::string PluginLoader::find_plugin(const std::string& name) {
     // Try various name formats
-    std::vector<std::string> candidates;
-    candidates.push_back(name);
-    candidates.push_back(name + ".so");
-    candidates.push_back("lib" + name + ".so");
-    candidates.push_back("openclaw_" + name + ".so");
-    candidates.push_back("libopenclaw_" + name + ".so");
-    
+    const std::vector<std::string> candidates = {
+        name,
+        name + ".so",
+        std::string("lib") + name + ".so",
+        std::string("openclaw_") + name + ".so",
+        std::string("libopenclaw_") + name + ".so"
+    };
+
     struct stat st;
-    for (size_t i = 0; i < search_paths_.size(); ++i) {
-        for (size_t j = 0; j < candidates.size(); ++j) {
-            std::string path = search_paths_[i] + "/" + candidates[j];
+    for (const auto& base : search_paths_) {
+        for (const auto& cand : candidates) {
+            std::string path = base + "/" + cand;
             if (stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) {
                 return path;
             }
