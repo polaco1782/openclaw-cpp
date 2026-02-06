@@ -13,7 +13,6 @@
 #include <openclaw/core/utils.hpp>
 #include <openclaw/core/registry.hpp>
 #include <openclaw/core/channel.hpp>
-#include "control_ui.h"
 
 // Crow header-only library (C++17 required)
 #include "deps/crow_all.h"
@@ -35,9 +34,10 @@ namespace openclaw {
 
 class WebSocketServer {
 public:
-    WebSocketServer(GatewayPlugin* plugin) 
+    WebSocketServer(GatewayPlugin* plugin, const std::string& index_filename) 
         : plugin_(plugin)
         , port_(0)
+        , index_filename_(index_filename)
         , running_(false)
         , app_() {}
     
@@ -118,17 +118,29 @@ private:
         CROW_ROUTE(app_, "/")
         ([this]() {
             crow::response res;
-            res.set_header("Content-Type", "text/html; charset=utf-8");
-            res.body = std::string(CONTROL_UI_HTML);
-            LOG_DEBUG("[Gateway] Served control UI to HTTP client");
+            res.redirect("/index.html");
             return res;
         });
         
         CROW_ROUTE(app_, "/index.html")
         ([this]() {
             crow::response res;
-            res.set_header("Content-Type", "text/html; charset=utf-8");
-            res.body = std::string(CONTROL_UI_HTML);
+            std::ifstream html_file(index_filename_);
+            if (html_file.is_open()) {
+                std::stringstream buffer;
+                buffer << html_file.rdbuf();
+                res.set_header("Content-Type", "text/html; charset=utf-8");
+                res.body = buffer.str();
+                html_file.close();
+
+                LOG_DEBUG("[Gateway] Served control UI to HTTP client");
+            }
+            else {
+                res.code = 404;
+                res.body = "404 Not Found";
+                LOG_WARN("[Gateway] Control UI HTML file not found");
+            }
+
             return res;
         });
         
@@ -202,6 +214,7 @@ private:
     GatewayPlugin* plugin_;
     int port_;
     std::string bind_host_;
+    std::string index_filename_;
     std::atomic<bool> running_;
     crow::SimpleApp app_;
     std::thread server_thread_;
@@ -267,12 +280,13 @@ bool GatewayPlugin::init(const Config& cfg) {
     port_ = cfg.get_int("gateway.port", 18789);
     bind_host_ = cfg.get_string("gateway.bind", "127.0.0.1");
     auth_token_ = cfg.get_string("gateway.auth.token", "");
+    index_filename_ = cfg.get_string("gateway.index_file", "ui/control_ui.html");
     
     LOG_INFO("Gateway config: port=%d, bind=%s, auth=%s", 
              port_, bind_host_.c_str(), auth_token_.empty() ? "disabled" : "enabled");
     
     // Create WebSocket server (but don't start yet)
-    ws_server_ = new WebSocketServer(this);
+    ws_server_ = new WebSocketServer(this, index_filename_);
     
     initialized_ = true;
     LOG_INFO("Gateway plugin initialized (will start on first poll)");
@@ -560,50 +574,66 @@ Json GatewayPlugin::handle_hello(GatewayClient* client, const Json& params) {
 Json GatewayPlugin::handle_chat_send(GatewayClient* /* client */, const Json& params) {
     Json result = Json::object();
     
-    // Extract parameters
-    if (!params.contains("channel") || !params.contains("to") || !params.contains("text")) {
-        result["error"] = "Missing required parameters: channel, to, text";
+    // Only 'text' is required now
+    if (!params.contains("text")) {
+        result["error"] = "Missing required parameter: text";
         return result;
     }
     
-    std::string channel_id = params.value("channel", std::string(""));
-    std::string to = params.value("to", std::string(""));
     std::string text = params.value("text", std::string(""));
     std::string reply_to = params.value("reply_to", std::string(""));
-    
-    LOG_INFO("Gateway chat.send: channel=%s, to=%s, text=%s", 
-             channel_id.c_str(), to.c_str(), text.c_str());
-    
-    // Send initial typing indicator to gateway clients
-    send_typing_event(channel_id, to, true);
-    
-    // Get the channel plugin from registry
-    ChannelPlugin* channel = PluginRegistry::instance().get_channel(channel_id);
-    if (!channel) {
-        result["error"] = "Channel not found: " + channel_id;
-        LOG_ERROR("Channel not found: %s", channel_id.c_str());
-        send_typing_event(channel_id, to, false);  // Stop typing on error
+
+    LOG_INFO("Gateway chat.send: text=%s", text.c_str());
+
+    // Check if we have a recent chat to route to
+    if (recent_chat_id_.empty()) {
+        result["error"] = "No active chat - send a message from a channel first";
+        LOG_WARN("[Gateway] Cannot send - no recent chat tracked");
         return result;
     }
+
+    LOG_DEBUG("[Gateway] Routing to recent chat: %s", recent_chat_id_.c_str());
+
+    // Broadcast the message to ALL registered channels
+    // Each channel will route to the recent chat_id
+    auto& registry = PluginRegistry::instance();
+    auto channels = registry.channels();  // Non-const copy
     
-    // Send the message
-    SendResult send_result;
-    if (!reply_to.empty()) {
-        send_result = channel->send_message(to, text, reply_to);
-    } else {
-        send_result = channel->send_message(to, text);
+    bool any_success = false;
+    std::vector<std::string> message_ids;
+    std::vector<std::string> errors;
+    
+    for (auto* channel : channels) {
+        if (!channel) continue;
+        
+        std::string channel_id = channel->channel_id();
+        SendResult send_result;
+        
+        if (!reply_to.empty()) {
+            send_result = channel->send_message(recent_chat_id_, text, reply_to);
+        } else {
+            send_result = channel->send_message(recent_chat_id_, text);
+        }
+        
+        if (send_result.success) {
+            any_success = true;
+            message_ids.push_back(send_result.message_id);
+            LOG_DEBUG("[Gateway] Message sent successfully to %s:%s - msg_id=%s", 
+                     channel_id.c_str(), recent_chat_id_.c_str(), send_result.message_id.c_str());
+        } else {
+            errors.push_back("[" + channel_id + "] " + send_result.error);
+            LOG_ERROR("Failed to send message to %s:%s - %s", 
+                     channel_id.c_str(), recent_chat_id_.c_str(), send_result.error.c_str());
+        }
     }
     
-    // Return result
-    if (send_result.success) {
+    if (any_success) {
         result["success"] = true;
-        result["message_id"] = send_result.message_id;
-        LOG_DEBUG("[Gateway] Message sent successfully: %s", send_result.message_id.c_str());
-        // Note: typing indicator will be stopped by AI monitor when session ends
+        result["message_ids"] = message_ids;
+        result["recent_chat"] = recent_chat_id_;
     } else {
         result["success"] = false;
-        result["error"] = send_result.error;
-        LOG_ERROR("Failed to send message: %s", send_result.error.c_str());
+        result["error"] = errors;
     }
     
     return result;
@@ -656,6 +686,10 @@ void GatewayPlugin::route_incoming_message(const Message& msg) {
 
 void GatewayPlugin::on_incoming_message(const Message& msg) {
     // This is called by the main application for all incoming messages
+    
+    // Track most recent chat for routing outgoing messages
+    recent_chat_id_ = msg.to;
+    
     route_incoming_message(msg);
 }
 

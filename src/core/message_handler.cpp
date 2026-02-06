@@ -318,40 +318,50 @@ void send_response(
     }
     
     auto& app = Application::instance();
-    auto* channel = app.registry().get_channel(original_msg.channel);
     
-    if (!channel) {
-        LOG_ERROR("Channel not found: %s", original_msg.channel.c_str());
+    // Route message to ALL registered channels
+    const auto& channels = app.registry().channels();
+    
+    if (channels.empty()) {
+        LOG_ERROR("No channels registered");
         return;
     }
     
     // Split into chunks if needed
     auto chunks = split_message_chunks(response, 3500);
     
-    for (size_t i = 0; i < chunks.size(); ++i) {
-        const auto& chunk = chunks[i];
-        if (chunk.empty()) {
-            continue;
-        }
-
-        SendResult result;
-        if (i == 0) {
-            result = channel->send_message(original_msg.to, chunk, original_msg.id);
-        } else {
-            result = channel->send_message(original_msg.to, chunk);
-        }
-
-        if (result.success) {
-            notify_outgoing_message(original_msg.channel, original_msg.to, chunk, original_msg.id);
-        } else {
-            LOG_ERROR("Failed to send response: %s", result.error.c_str());
-            
-            // Check thread pool status
-            auto pending = app.thread_pool().pending();
-            if (pending > 4) {
-                LOG_WARN("Thread pool has %zu pending tasks - system may be overloaded", pending);
+    for (auto* channel : channels) {
+        if (!channel) continue;
+        
+        std::string channel_id = channel->channel_id();
+        
+        for (size_t i = 0; i < chunks.size(); ++i) {
+            const auto& chunk = chunks[i];
+            if (chunk.empty()) {
+                continue;
             }
-            break;
+
+            SendResult result;
+            if (i == 0) {
+                // Reply to original message on first chunk
+                result = channel->send_message(original_msg.to, chunk, original_msg.id);
+            } else {
+                result = channel->send_message(original_msg.to, chunk);
+            }
+
+            if (result.success) {
+                LOG_DEBUG("[MessageHandler] Message sent to %s: %s", channel_id.c_str(), result.message_id.c_str());
+                notify_outgoing_message(channel_id, original_msg.to, chunk, original_msg.id);
+            } else {
+                LOG_ERROR("Failed to send response to %s: %s", channel_id.c_str(), result.error.c_str());
+                
+                // Check thread pool status
+                auto pending = app.thread_pool().pending();
+                if (pending > 4) {
+                    LOG_WARN("Thread pool has %zu pending tasks - system may be overloaded", pending);
+                }
+                break;
+            }
         }
     }
 }

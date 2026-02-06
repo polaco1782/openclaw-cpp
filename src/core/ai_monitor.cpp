@@ -226,10 +226,10 @@ void AIProcessMonitor::send_typing_indicator(const std::string& channel_id,
     
     if (send_result.success) {
         total_typing_indicators_sent_.fetch_add(1);
-        LOG_INFO("[AIProcessMonitor] ✓ typing indicator sent to %s:%s (total: %d)",
+        LOG_INFO("[AIProcessMonitor] typing indicator sent to %s:%s (total: %d)",
                   channel_id.c_str(), chat_id.c_str(), total_typing_indicators_sent_.load());
     } else {
-        LOG_WARN("[AIProcessMonitor] ✗ failed to send typing indicator to %s:%s - %s",
+        LOG_WARN("[AIProcessMonitor] failed to send typing indicator to %s:%s - %s",
                   channel_id.c_str(), chat_id.c_str(), send_result.error.c_str());
     }
     

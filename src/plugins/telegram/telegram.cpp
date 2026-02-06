@@ -161,7 +161,7 @@ SendResult TelegramChannel::send_typing_action(const std::string& to) {
         return SendResult::fail("API error: " + desc);
     }
     
-    LOG_INFO("Telegram: ✓ typing action sent successfully to %s", to.c_str());
+    LOG_INFO("Telegram: typing action sent successfully to %s", to.c_str());
     return SendResult::ok("");
 }
 

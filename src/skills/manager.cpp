@@ -123,10 +123,10 @@ std::vector<SkillEntry> SkillManager::filter_skill_entries(
     
     for (size_t i = 0; i < entries.size(); ++i) {
         if (should_include_skill(entries[i], eligibility)) {
-            LOG_DEBUG("[SkillManager] ✓ Including skill: %s", entries[i].skill.name.c_str());
+            LOG_DEBUG("[SkillManager] Including skill: %s", entries[i].skill.name.c_str());
             filtered.push_back(entries[i]);
         } else {
-            LOG_DEBUG("[SkillManager] ✗ Filtering out skill: %s", entries[i].skill.name.c_str());
+            LOG_DEBUG("[SkillManager] Filtering out skill: %s", entries[i].skill.name.c_str());
         }
     }
     
@@ -809,9 +809,9 @@ std::string SkillManager::list_skills_for_display(
         std::string status;
         if (show_eligibility) {
             if (should_include_skill(entry, NULL)) {
-                status = "✓";
+                status = "(good)";
             } else {
-                status = "✗";
+                status = "(bad)";
             }
         }
         

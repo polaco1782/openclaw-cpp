@@ -72,12 +72,16 @@ private:
     int port_;
     std::string bind_host_;
     std::string auth_token_;
+    std::string index_filename_;
     
     // WebSocket server (implementation in .cpp)
     WebSocketServer* ws_server_;
     
     // Connected clients
     std::set<GatewayClient*> clients_;
+    
+    // Track most recent active chat for routing outgoing messages
+    std::string recent_chat_id_;
     
     // Gateway protocol methods
     Json handle_hello(GatewayClient* client, const Json& params);

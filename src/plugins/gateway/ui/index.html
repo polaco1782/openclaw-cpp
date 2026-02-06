@@ -414,19 +414,7 @@
             </div>
             
             <div class="chat-input-container">
-                <div class="chat-controls">
-                    <div class="input-group">
-                        <label>Channel</label>
-                        <select id="channelSelect">
-                            <option value="telegram">Telegram</option>
-                            <option value="whatsapp">WhatsApp</option>
-                        </select>
-                    </div>
-                    <div class="input-group">
-                        <label>Recipient</label>
-                        <input type="text" id="recipientInput" placeholder="Chat ID or username">
-                    </div>
-                </div>
+                <!-- Channel and recipient selection removed: messages go to all channels -->
                 <div class="message-input-row">
                     <input type="text" id="messageInput" placeholder="Type a message..." autocomplete="off">
                     <button id="sendBtn" disabled>Send</button>
@@ -450,8 +438,7 @@
         const messagesEl = document.getElementById('messages');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
-        const channelSelect = document.getElementById('channelSelect');
-        const recipientInput = document.getElementById('recipientInput');        const typingIndicator = document.getElementById('typingIndicator');        
+        const typingIndicator = document.getElementById('typingIndicator');
         function log(message, level = 'info') {
             const entry = document.createElement('div');
             entry.className = `log-entry ${level}`;
@@ -614,31 +601,14 @@
         
         let typingTimeout = null;
         function showTyping(channel, chatId) {
-            typingIndicator.classList.add('active');
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            
-            // Auto-hide after 5 seconds if no update
-            clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                hideTyping();
-            }, 5000);
-        }
-        
-        function hideTyping() {
-            typingIndicator.classList.remove('active');
-            clearTimeout(typingTimeout);
-        }
-        
-        let typingTimeout = null;
-        function showTyping(channel, chatId) {
             const emptyState = messagesDiv.querySelector('.empty-state');
             if (emptyState) emptyState.style.display = 'none';
-            
+
             typingIndicator.classList.add('active');
             setTimeout(() => {
                 messagesDiv.scrollTop = messagesDiv.scrollHeight + 100;
             }, 10);
-            
+
             // Auto-hide after 5 seconds if no update
             clearTimeout(typingTimeout);
             typingTimeout = setTimeout(() => {
@@ -664,33 +634,24 @@
         
         function sendMessage() {
             const text = messageInput.value.trim();
-            const channel = channelSelect.value;
-            const recipient = recipientInput.value.trim();
-            
-            if (!text || !recipient) {
-                log('Please enter message and recipient', 'warn');
+            if (!text) {
+                log('Please enter a message', 'warn');
                 return;
             }
-            
             if (!connected) {
                 log('Not connected', 'error');
                 return;
             }
-            
             // Add to UI immediately as sent message
             addMessage({
                 text: text,
                 timestamp: Math.floor(Date.now() / 1000),
                 from_name: 'You'
             }, 'sent');
-            
             // Send via gateway
             callMethod('chat.send', {
-                channel: channel,
-                to: recipient,
                 text: text
             });
-            
             // Clear input
             messageInput.value = '';
             messageInput.focus();

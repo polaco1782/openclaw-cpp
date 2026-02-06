@@ -1,4 +1,5 @@
 #include <openclaw/core/config.hpp>
+#include <openclaw/core/logger.hpp>
 
 namespace openclaw {
 
@@ -44,20 +45,28 @@ std::string Config::get_string(const std::string& key, const std::string& def) c
                 if (sec.contains(subsection)) {
                     const Json& subsec = sec[subsection];
                     if (subsec.contains(finalkey) && subsec[finalkey].is_string()) {
+                        LOG_DEBUG("Config: found nested key '%s.%s.%s'", 
+                                  section.c_str(), subsection.c_str(), finalkey.c_str());
                         return subsec[finalkey].get<std::string>();
                     }
                 }
             } else if (sec.contains(subkey) && sec[subkey].is_string()) {
+                LOG_DEBUG("Config: found key '%s.%s'", section.c_str(), subkey.c_str());
                 return sec[subkey].get<std::string>();
             }
         }
+
+        LOG_DEBUG("Config: key '%s' not found in section '%s'", subkey.c_str(), section.c_str());
         return def;
     }
     
     // No dot notation, direct lookup
     if (data_.contains(key) && data_[key].is_string()) {
+        LOG_DEBUG("Config: found key '%s'", key.c_str());
         return data_[key].get<std::string>();
     }
+
+    LOG_DEBUG("Config: key '%s' not found", key.c_str());
     return def;
 }
 
@@ -71,14 +80,17 @@ int64_t Config::get_int(const std::string& key, int64_t def) const {
         if (data_.contains(section)) {
             const Json& sec = data_[section];
             if (sec.contains(subkey) && sec[subkey].is_number()) {
+                LOG_DEBUG("Config: found key '%s.%s'", section.c_str(), subkey.c_str());
                 return sec[subkey].get<int64_t>();
             }
         }
+        LOG_DEBUG("Config: key '%s' not found in section '%s'", subkey.c_str(), section.c_str());
         return def;
     }
     
     // No dot notation, direct lookup
     if (data_.contains(key) && data_[key].is_number()) {
+        LOG_DEBUG("Config: found key '%s'", key.c_str());
         return data_[key].get<int64_t>();
     }
     return def;
@@ -86,6 +98,7 @@ int64_t Config::get_int(const std::string& key, int64_t def) const {
 
 bool Config::get_bool(const std::string& key, bool def) const {
     if (data_.contains(key) && data_[key].is_boolean()) {
+        LOG_DEBUG("Config: found key '%s'", key.c_str());
         return data_[key].get<bool>();
     }
     return def;
